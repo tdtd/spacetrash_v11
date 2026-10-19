@@ -64,6 +64,7 @@ fn tile_debug_char(tile: &TileType) -> char {
         TileType::Wall(WallDirection::NorthWest) => '8',
         TileType::Wall(WallDirection::SouthEast) => '9',
         TileType::Wall(WallDirection::SouthWest) => '0',
+        TileType::Void => ' ',
     }
 }
 
@@ -71,6 +72,7 @@ fn tile_passability_char(tile: &TileType) -> char {
     match tile {
         TileType::Door(_) => '+',
         other if other.is_passable() => '.',
+        TileType::Void => '#',
         _ => '#',
     }
 }

@@ -26,6 +26,8 @@ pub enum TileType {
     Conduit,
     /// Passable fluid pipe marker (used by fluidics schematic layer).
     Pipe,
+    /// Non-room deadzone / outside the ship. Impassable, but not a wall.
+    Void,
 }
 
 impl TileType {
@@ -53,6 +55,7 @@ impl TileType {
             TileType::Door(_) => '+',
             TileType::Conduit => '.',
             TileType::Pipe => '.',
+            TileType::Void => ' ',
         }
     }
 }

@@ -62,6 +62,7 @@ fn map_signature(grid: &[Vec<TileType>]) -> String {
     let mut door = 0;
     let mut conduit = 0;
     let mut pipe = 0;
+    let mut void = 0;
 
     for tile in grid.iter().flatten() {
         match tile {
@@ -70,8 +71,9 @@ fn map_signature(grid: &[Vec<TileType>]) -> String {
             TileType::Door(_) => door += 1,
             TileType::Conduit => conduit += 1,
             TileType::Pipe => pipe += 1,
+            TileType::Void => void += 1,
         }
     }
 
-    format!("f{floor}_w{wall}_d{door}_c{conduit}_p{pipe}")
+    format!("f{floor}_w{wall}_d{door}_c{conduit}_p{pipe}_v{void}")
 }

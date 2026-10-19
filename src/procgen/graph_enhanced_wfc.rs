@@ -57,6 +57,39 @@ fn hs(tiles: &[TileId]) -> HashSet<TileId> {
     tiles.iter().copied().collect()
 }
 
+/// Formal adjacency rule for a single tile: which tile IDs are allowed
+/// in each of the four cardinal directions.
+struct TileRule {
+    north: HashSet<TileId>,
+    south: HashSet<TileId>,
+    east: HashSet<TileId>,
+    west: HashSet<TileId>,
+}
+
+impl TileRule {
+    fn new(north: &[TileId], south: &[TileId], east: &[TileId], west: &[TileId]) -> Self {
+        Self {
+            north: hs(north),
+            south: hs(south),
+            east: hs(east),
+            west: hs(west),
+        }
+    }
+
+    fn all(same: &[TileId]) -> Self {
+        Self::new(same, same, same, same)
+    }
+
+    fn into_adjacency(self) -> TileAdjacency {
+        TileAdjacency {
+            north: self.north,
+            south: self.south,
+            east: self.east,
+            west: self.west,
+        }
+    }
+}
+
 fn build_semantic_tileset() -> (HashMap<TileId, TileType>, WfcTileSet) {
     let mut type_map = HashMap::new();
     type_map.insert(T_FLOOR, TileType::Floor);
@@ -74,14 +107,21 @@ fn build_semantic_tileset() -> (HashMap<TileId, TileType>, WfcTileSet) {
     type_map.insert(T_DOOR_S, TileType::Door(WallDirection::South));
     type_map.insert(T_DOOR_E, TileType::Door(WallDirection::East));
     type_map.insert(T_DOOR_W, TileType::Door(WallDirection::West));
-    type_map.insert(T_VOID, TileType::Wall(WallDirection::North));
+    type_map.insert(T_VOID, TileType::Void);
 
-    let void_neighbors = hs(&[
-        T_VOID, T_WALL_N, T_WALL_S, T_WALL_E, T_WALL_W,
-        T_WALL_NE, T_WALL_NW, T_WALL_SE, T_WALL_SW,
-    ]);
+    let void_allowed: &[TileId] = &[
+        T_VOID,
+        T_WALL_N,
+        T_WALL_S,
+        T_WALL_E,
+        T_WALL_W,
+        T_WALL_NE,
+        T_WALL_NW,
+        T_WALL_SE,
+        T_WALL_SW,
+    ];
 
-    let open_neighbors = hs(&[
+    let open_allowed: &[TileId] = &[
         T_FLOOR,
         T_CONDUIT,
         T_PIPE,
@@ -97,47 +137,26 @@ fn build_semantic_tileset() -> (HashMap<TileId, TileType>, WfcTileSet) {
         T_DOOR_S,
         T_DOOR_E,
         T_DOOR_W,
-    ]);
+    ];
 
-    let wall_neighbors = all_tiles();
+    // Wall tiles are locked by the scaffold and do not participate in
+    // WFC propagation. Their adjacency sets are intentionally permissive.
+    let all_tiles_vec: Vec<TileId> = all_tiles().into_iter().collect();
+    let wall_allowed: &[TileId] = &all_tiles_vec;
 
     let mut adjacency = HashMap::new();
 
-    adjacency.insert(
-        T_VOID,
-        TileAdjacency {
-            north: void_neighbors.clone(),
-            south: void_neighbors.clone(),
-            east: void_neighbors.clone(),
-            west: void_neighbors,
-        },
-    );
+    adjacency.insert(T_VOID, TileRule::all(void_allowed).into_adjacency());
 
-    for open in [T_FLOOR, T_CONDUIT, T_PIPE, T_DOOR_N, T_DOOR_S, T_DOOR_E, T_DOOR_W] {
-        adjacency.insert(
-            open,
-            TileAdjacency {
-                north: open_neighbors.clone(),
-                south: open_neighbors.clone(),
-                east: open_neighbors.clone(),
-                west: open_neighbors.clone(),
-            },
-        );
+    for &tile in &[T_FLOOR, T_CONDUIT, T_PIPE, T_DOOR_N, T_DOOR_S, T_DOOR_E, T_DOOR_W] {
+        adjacency.insert(tile, TileRule::all(open_allowed).into_adjacency());
     }
 
-    for wall in [
+    for &tile in &[
         T_WALL_N, T_WALL_S, T_WALL_E, T_WALL_W,
         T_WALL_NE, T_WALL_NW, T_WALL_SE, T_WALL_SW,
     ] {
-        adjacency.insert(
-            wall,
-            TileAdjacency {
-                north: wall_neighbors.clone(),
-                south: wall_neighbors.clone(),
-                east: wall_neighbors.clone(),
-                west: wall_neighbors.clone(),
-            },
-        );
+        adjacency.insert(tile, TileRule::all(wall_allowed).into_adjacency());
     }
 
     let tile_set = WfcTileSet::new(all_tiles(), adjacency);
@@ -326,11 +345,85 @@ pub fn graph_enhanced_collapse(
             let tile_type = type_map
                 .get(&tile_id)
                 .copied()
-                .unwrap_or(TileType::Wall(WallDirection::North));
+                .unwrap_or(TileType::Void);
             row.push(tile_type);
         }
         output.push(row);
     }
 
     Ok(output)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::procgen::wfc::Direction;
+
+    #[test]
+    fn adjacency_rules_are_symmetric() {
+        let (_, tile_set) = build_semantic_tileset();
+        let tiles: Vec<TileId> = tile_set.tiles.iter().copied().collect();
+
+        for &a in &tiles {
+            for &b in &tiles {
+                for dir in [
+                    Direction::North,
+                    Direction::South,
+                    Direction::East,
+                    Direction::West,
+                ] {
+                    let a_allows_b = tile_set
+                        .allowed_in_direction(a, dir)
+                        .map_or(false, |set| set.contains(&b));
+                    let b_allows_a = tile_set
+                        .allowed_in_direction(b, dir.opposite())
+                        .map_or(false, |set| set.contains(&a));
+
+                    assert_eq!(
+                        a_allows_b, b_allows_a,
+                        "adjacency asymmetry for tiles {a} and {b} in {dir:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn void_is_not_adjacent_to_open_tiles() {
+        let (_, tile_set) = build_semantic_tileset();
+        let void = T_VOID;
+        let open_tiles = [
+            T_FLOOR,
+            T_CONDUIT,
+            T_PIPE,
+            T_DOOR_N,
+            T_DOOR_S,
+            T_DOOR_E,
+            T_DOOR_W,
+        ];
+
+        for &open in &open_tiles {
+            for dir in [
+                Direction::North,
+                Direction::South,
+                Direction::East,
+                Direction::West,
+            ] {
+                assert!(
+                    !tile_set
+                        .allowed_in_direction(void, dir)
+                        .unwrap()
+                        .contains(&open),
+                    "void should not allow open tile {open} in {dir:?}"
+                );
+                assert!(
+                    !tile_set
+                        .allowed_in_direction(open, dir)
+                        .unwrap()
+                        .contains(&void),
+                    "open tile {open} should not allow void in {dir:?}"
+                );
+            }
+        }
+    }
 }

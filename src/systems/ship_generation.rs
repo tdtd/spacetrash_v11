@@ -11,6 +11,12 @@ use crate::procgen::tile::{TileType, WallDirection};
 use crate::resources::ship_template::ShipTemplate;
 use crate::resources::{CurrentRoomGraph, CurrentSystemGraphs};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum LineDirection {
+    EastWest,
+    NorthSouth,
+}
+
 /// Deterministic pseudo-random generator used for room-type assignment and
 /// interior decoration. Not cryptographically secure.
 struct SimpleRng {
@@ -34,6 +40,37 @@ impl SimpleRng {
     }
 }
 
+/// Returns the transform for a floor plane so it lies flat on the XZ plane.
+///
+/// `Plane3d::default()` already lies flat, so no rotation is required.
+fn floor_transform(pos: Vec3) -> Transform {
+    Transform::from_translation(pos)
+}
+
+/// Returns the transform for a ceiling plane at the given height.
+///
+/// Rotate the floor plane 180° around X to face downward.
+fn ceiling_transform(pos: Vec3, ceiling_height: f32) -> Transform {
+    Transform::from_translation(Vec3::new(pos.x, ceiling_height, pos.z))
+        .with_rotation(Quat::from_rotation_x(std::f32::consts::PI))
+}
+
+/// Returns the cuboid size used for a ceiling conduit line.
+fn conduit_line_size(direction: LineDirection) -> Vec3 {
+    match direction {
+        LineDirection::EastWest => Vec3::new(1.0, 0.03, 0.03),
+        LineDirection::NorthSouth => Vec3::new(0.03, 0.03, 1.0),
+    }
+}
+
+/// Returns the cuboid size used for a floor pipe line.
+fn pipe_line_size(direction: LineDirection) -> Vec3 {
+    match direction {
+        LineDirection::EastWest => Vec3::new(1.0, 0.02, 0.04),
+        LineDirection::NorthSouth => Vec3::new(0.04, 0.02, 1.0),
+    }
+}
+
 /// Spawns a ship entity and its rooms/walls from a `ShipTemplate`.
 ///
 /// This is the first playable integration of the graph + GE-WFC generator.
@@ -46,6 +83,9 @@ impl SimpleRng {
 /// Door tiles now contain a floor plane and two side walls that form a
 /// passage between adjacent rooms.
 /// Conduit and pipe tiles now additionally spawn visible ceil/floor line meshes.
+///
+/// Floor, wall, and ceiling surfaces use a subtle checkerboard pattern to
+/// separate them from one another and from gameplay-relevant geometry.
 pub fn spawn_ship_from_template(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
@@ -257,12 +297,28 @@ pub fn spawn_ship_from_template(
     }
 
     // Materials.
-    let floor_material = materials.add(StandardMaterial {
-        base_color: Color::rgb(0.4, 0.4, 0.4),
+    let floor_material_a = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.42, 0.42, 0.42),
         ..default()
     });
-    let wall_material = materials.add(StandardMaterial {
-        base_color: Color::rgb(0.2, 0.2, 0.2),
+    let floor_material_b = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.32, 0.32, 0.32),
+        ..default()
+    });
+    let wall_material_a = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.24, 0.24, 0.24),
+        ..default()
+    });
+    let wall_material_b = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.16, 0.16, 0.16),
+        ..default()
+    });
+    let ceiling_material_a = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.52, 0.52, 0.52),
+        ..default()
+    });
+    let ceiling_material_b = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.38, 0.38, 0.38),
         ..default()
     });
     let conduit_material = materials.add(StandardMaterial {
@@ -282,59 +338,133 @@ pub fn spawn_ship_from_template(
             let world_z = origin_z + gy as f32 + 0.5;
             let pos = Vec3::new(world_x, 0.0, world_z);
 
+            let checker_even = (gx + gy) % 2 == 0;
+
+            let floor_material = if checker_even {
+                &floor_material_a
+            } else {
+                &floor_material_b
+            };
+            let wall_material = if checker_even {
+                &wall_material_a
+            } else {
+                &wall_material_b
+            };
+            let ceiling_material = if checker_even {
+                &ceiling_material_a
+            } else {
+                &ceiling_material_b
+            };
+
+            // Ceiling sits at the top of the wall slabs. Wall slabs are
+            // centered at y=0 with height `wall_height`, so their top is
+            // `wall_height / 2`.
+            let ceiling_height = template.wall_height * 0.5;
+
             match tile {
                 TileType::Floor => {
                     spawn_floor(
                         commands,
                         meshes,
-                        &floor_material,
+                        floor_material,
                         pos,
                         tile,
                         GridCoordinates { x: gx as i32, y: gy as i32 },
+                    );
+
+                    spawn_ceiling_plane(
+                        commands,
+                        meshes,
+                        ceiling_material,
+                        pos,
+                        ceiling_height,
                     );
                 }
                 TileType::Conduit => {
                     spawn_floor(
                         commands,
                         meshes,
-                        &floor_material,
+                        floor_material,
                         pos,
                         tile,
                         GridCoordinates { x: gx as i32, y: gy as i32 },
                     );
+
+                    spawn_ceiling_plane(
+                        commands,
+                        meshes,
+                        ceiling_material,
+                        pos,
+                        ceiling_height,
+                    );
+
+                    let horizontal = (gx > 0 && grid[gy][gx - 1] == tile)
+                        || (gx + 1 < grid[gy].len() && grid[gy][gx + 1] == tile);
+                    let direction = if horizontal {
+                        LineDirection::EastWest
+                    } else {
+                        LineDirection::NorthSouth
+                    };
+
                     spawn_ceiling_conduit_line(
                         commands,
                         meshes,
                         &conduit_material,
                         pos,
-                        template.wall_height,
+                        ceiling_height,
+                        direction,
                     );
                 }
                 TileType::Pipe => {
                     spawn_floor(
                         commands,
                         meshes,
-                        &floor_material,
-                        pos,
-                        tile,
-                        GridCoordinates { x: gx as i32, y: gy as i32 },
-                    );
-                    spawn_floor_pipe_line(commands, meshes, &pipe_material, pos);
-                }
-                TileType::Door(direction) => {
-                    spawn_floor(
-                        commands,
-                        meshes,
-                        &floor_material,
+                        floor_material,
                         pos,
                         tile,
                         GridCoordinates { x: gx as i32, y: gy as i32 },
                     );
 
+                    spawn_ceiling_plane(
+                        commands,
+                        meshes,
+                        ceiling_material,
+                        pos,
+                        ceiling_height,
+                    );
+
+                    let horizontal = (gx > 0 && grid[gy][gx - 1] == tile)
+                        || (gx + 1 < grid[gy].len() && grid[gy][gx + 1] == tile);
+                    let direction = if horizontal {
+                        LineDirection::EastWest
+                    } else {
+                        LineDirection::NorthSouth
+                    };
+
+                    spawn_floor_pipe_line(commands, meshes, &pipe_material, pos, direction);
+                }
+                TileType::Door(direction) => {
+                    spawn_floor(
+                        commands,
+                        meshes,
+                        floor_material,
+                        pos,
+                        tile,
+                        GridCoordinates { x: gx as i32, y: gy as i32 },
+                    );
+
+                    spawn_ceiling_plane(
+                        commands,
+                        meshes,
+                        ceiling_material,
+                        pos,
+                        ceiling_height,
+                    );
+
                     spawn_door_side_walls(
                         commands,
                         meshes,
-                        &wall_material,
+                        wall_material,
                         template.wall_height,
                         template.wall_thickness,
                         direction,
@@ -342,7 +472,7 @@ pub fn spawn_ship_from_template(
                     );
                 }
                 TileType::Wall(direction) => {
-                    spawn_floor_surface_only(commands, meshes, &floor_material, pos);
+                    spawn_floor_surface_only(commands, meshes, floor_material, pos);
 
                     let wall_collider = WallSegmentCollider::for_direction(direction);
                     let visual_assets = wall_visual_assets(
@@ -375,6 +505,9 @@ pub fn spawn_ship_from_template(
                             });
                         }
                     });
+                }
+                TileType::Void => {
+                    // Deadzone/outside ship. Intentionally left empty.
                 }
             }
         }
@@ -565,6 +698,8 @@ fn wall_visual_assets(
 }
 
 /// Spawns a floor plane with the given tile type and no children.
+///
+/// Floor material is chosen externally to provide a checkerboard variation.
 fn spawn_floor(
     commands: &mut Commands,
     meshes: &mut ResMut<Assets<Mesh>>,
@@ -577,7 +712,7 @@ fn spawn_floor(
         PbrBundle {
             mesh: meshes.add(Plane3d::default().mesh().size(1.0, 1.0)),
             material: floor_material.clone(),
-            transform: Transform::from_translation(pos),
+            transform: floor_transform(pos),
             ..default()
         },
         GameplayEntity,
@@ -600,7 +735,29 @@ fn spawn_floor_surface_only(
         PbrBundle {
             mesh: meshes.add(Plane3d::default().mesh().size(1.0, 1.0)),
             material: floor_material.clone(),
-            transform: Transform::from_translation(pos),
+            transform: floor_transform(pos),
+            ..default()
+        },
+        GameplayEntity,
+    ));
+}
+
+/// Spawns a ceiling plane for open room tiles.
+///
+/// Ceilings are only visible from inside the ship; this crate does not use
+/// a top-down/bird's-eye camera.
+fn spawn_ceiling_plane(
+    commands: &mut Commands,
+    meshes: &mut ResMut<Assets<Mesh>>,
+    ceiling_material: &Handle<StandardMaterial>,
+    pos: Vec3,
+    ceiling_height: f32,
+) {
+    commands.spawn((
+        PbrBundle {
+            mesh: meshes.add(Plane3d::default().mesh().size(1.0, 1.0)),
+            material: ceiling_material.clone(),
+            transform: ceiling_transform(pos, ceiling_height),
             ..default()
         },
         GameplayEntity,
@@ -675,11 +832,14 @@ fn spawn_ceiling_conduit_line(
     conduit_material: &Handle<StandardMaterial>,
     center: Vec3,
     ceiling_height: f32,
+    direction: LineDirection,
 ) {
     let y = (ceiling_height - 0.05).max(0.05);
+    let size = conduit_line_size(direction);
+
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(Cuboid::new(1.0, 0.03, 0.03)),
+            mesh: meshes.add(Cuboid::new(size.x, size.y, size.z)),
             material: conduit_material.clone(),
             transform: Transform::from_xyz(center.x, y, center.z),
             ..default()
@@ -696,15 +856,70 @@ fn spawn_floor_pipe_line(
     meshes: &mut ResMut<Assets<Mesh>>,
     pipe_material: &Handle<StandardMaterial>,
     center: Vec3,
+    direction: LineDirection,
 ) {
     let y = 0.03;
+    let size = pipe_line_size(direction);
+
     commands.spawn((
         PbrBundle {
-            mesh: meshes.add(Cuboid::new(1.0, 0.02, 0.04)),
+            mesh: meshes.add(Cuboid::new(size.x, size.y, size.z)),
             material: pipe_material.clone(),
             transform: Transform::from_xyz(center.x, y, center.z),
             ..default()
         },
         GameplayEntity,
     ));
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn floor_transform_leaves_plane_flat() {
+        let expected = Quat::IDENTITY;
+        let actual = floor_transform(Vec3::ZERO).rotation;
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn ceiling_transform_rotates_plane_downward() {
+        let height = 2.0;
+        let transform = ceiling_transform(Vec3::new(1.0, 0.0, 2.0), height);
+
+        assert_eq!(
+            transform.rotation,
+            Quat::from_rotation_x(std::f32::consts::PI)
+        );
+        assert_eq!(
+            transform.translation,
+            Vec3::new(1.0, height, 2.0)
+        );
+    }
+
+    #[test]
+    fn conduit_line_size_depends_on_direction() {
+        assert_eq!(
+            conduit_line_size(LineDirection::EastWest),
+            Vec3::new(1.0, 0.03, 0.03)
+        );
+        assert_eq!(
+            conduit_line_size(LineDirection::NorthSouth),
+            Vec3::new(0.03, 0.03, 1.0)
+        );
+    }
+
+    #[test]
+    fn pipe_line_size_depends_on_direction() {
+        assert_eq!(
+            pipe_line_size(LineDirection::EastWest),
+            Vec3::new(1.0, 0.02, 0.04)
+        );
+        assert_eq!(
+            pipe_line_size(LineDirection::NorthSouth),
+            Vec3::new(0.04, 0.02, 1.0)
+        );
+    }
 }

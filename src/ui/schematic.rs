@@ -591,6 +591,7 @@ fn render_fluidics_image(
                 TileType::Door(_) => tank_color,
                 TileType::Conduit => [0u8, 160, 255, 255],
                 TileType::Floor => floor_color,
+                TileType::Void => floor_color,
             };
             fill_tile_block(buf, width, height, px, py, color);
         }
@@ -644,6 +645,7 @@ fn render_atmospherics_image(
                 TileType::Conduit => [255u8, 200, 0, 255],
                 TileType::Pipe => [255u8, 0, 0, 255],
                 TileType::Floor => cool_color,
+                TileType::Void => cool_color,
             };
             fill_tile_block(buf, width, height, px, py, color);
         }
