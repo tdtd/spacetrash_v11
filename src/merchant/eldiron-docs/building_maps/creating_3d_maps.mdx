@@ -1,0 +1,218 @@
+---
+title: "Creating 3D Maps: Geometry"
+sidebar_position: 4
+---
+
+import Admonition from '@theme/Admonition';
+
+Eldiron's 3D workflow is based on direct **Geometry Objects**.
+
+You create and edit 3D objects directly in the scene through object, face, edge, and vertex editing.
+
+<Admonition type="note" title="2D Map Layer">
+The 3D editor displays Geometry Objects as the editable 3D world. Existing 2D linedefs are shown as a faint floor-plane reference overlay.
+</Admonition>
+
+## The 3D Editing Tools
+
+The familiar map tools keep their names, but in a 3D camera they operate on Geometry Objects:
+
+- **Object Tool (`O`)**: select, move, resize, create, duplicate, and delete whole objects.
+- **Vertex Tool (`V`)**: select and edit object vertices.
+- **Linedef / Edge Tool (`E`)**: select and edit object edges, and draw face-local surface lines for cutouts, ridges, and grooves.
+- **Sector / Face Tool (`F`)**: select and edit object faces.
+
+The 3D workflow is direct and mesh-like while using the same tool vocabulary as the 2D editor.
+
+The 3D shortcut resolver is context-aware: selected-geometry commands such as vertex fill with **F**, edge-loop selection with **L**, object rotation with **R**, and tile application with **T** keep priority over tool switching. Defaults can be changed from **Game / Shortcuts**.
+
+In **Orbit** mode, press **B** to arm a one-shot Box Select, then drag a rectangle in the active Object, Face, Edge, or Vertex mode. Hold **Shift** while dragging to add to the current selection, or **Alt/Option** to remove from it; press **Escape** to cancel. Box Select is an Orbit-only shortcut because macOS primary dragging on empty space or the ViewCube is used for orbiting. Outside Orbit, **B** retains its normal Prefab Tool shortcut.
+
+The Orbit ViewCube follows the camera. Click one of its visible faces to align the camera to that axis; in the macOS primary-drag path, click-dragging the cube or empty viewport space orbits instead.
+
+## Creating The First Object
+
+Switch to a 3D camera and use **Create Box** to add a Geometry Object.
+
+The created box becomes normal editable geometry:
+
+- select it with the **Object Tool**
+- move it with the object gizmo
+- resize it with the size gizmo or keyboard shortcuts
+- duplicate it with **Cmd / Ctrl + D**
+
+Create Box remembers the last box size. When a face is selected, Create Box can attach a new box to that face and match the selected face size on the in-plane axes. When a horizontal floor edge is selected in edge mode, Create Box finds the face below that edge and attaches a wall box to it. In this edge workflow, wall thickness is recalculated from the current grid step each time instead of reusing the previously remembered box thickness.
+
+Use **Create Unit Box** when you want the same surface attachment but a predictable `1 × 1 × 1` primitive. It remains centered on the selected surface and does not stretch to match that surface.
+
+## Object Editing
+
+With the **Object Tool (`O`)** active:
+
+- **M** switches the object gizmo to move mode.
+- **S** switches the object gizmo to size mode.
+- **R** rotates selected objects in 90-degree steps around the vertical Y axis.
+- **Shift + R** rotates selected objects in 90-degree steps around the Z axis, useful for standing floors up into walls.
+- **Drag a handle** to move or resize on that axis.
+- **+ / -** resize selected objects horizontally.
+- **[ / ]** resize selected objects vertically.
+- **T** applies the current tile, palette color, tilegraph, or nodegraph source to every face on the selected objects.
+- **Delete** removes the selected objects.
+
+Movement and resizing snap to the current grid size. When multiple objects are selected, dragging a selected object or its move gizmo moves the selection together. Gizmo handles are sized from the current camera view, so they stay usable on both small details and large objects.
+
+Use **Edit Geometry** to set exact object position and size. The same action also exposes object visibility, mesh-collision solidity, a lightweight group label, and 3D area metadata. Invisible objects are skipped by 3D rendering, and non-solid objects are skipped by mesh collision.
+
+Named Geometry Objects can act as 3D gameplay areas. Area-enabled objects are used as fallbacks for sector-style script destinations such as `goto("name", speed)`, `teleport("name")`, and `random_walk_in_sector(...)` when no 2D sector with the same name exists. This allows invisible, non-solid Geometry Objects to define trigger/navigation volumes. **Hide in Iso** fades a Geometry Object out while the player is inside its area in isometric gameplay.
+
+Use **1 ... 6** to change the grid snap step: `1`, `1/2`, `1/4`, `1/8`, `1/16`, or `1/32` world units. The 3D HUD keeps the compact shortcut slots and shows the active snap step beside them, and the visible 3D grid subdivision lines follow the same snap step. Use **, / .** to decrease or increase the 3D grid snap subdivision.
+
+When a 3D edge or surface-detail segment is selected, the HUD shows its length. While drawing a new surface line on a face, the HUD shows the current segment length from the start point to the hover point.
+
+Use **Toggle Editor Post** and **Toggle Editor Lighting** when you want a cleaner viewport while editing. These actions only affect the editor preview and do not change the project's render settings.
+
+## Face Editing
+
+Use the **Sector / Face Tool (`F`)** in 3D to select faces.
+
+Useful face shortcuts:
+
+- **Cmd/Ctrl+E** runs the Face Extrude action. Set the extrusion amount in the action parameters.
+- **Face Cut Opening** cuts a rectangular window or doorway through the selected face and its opposite face.
+- **Create Cutout** cuts a selected closed surface-line loop through the host object.
+- **Cmd/Ctrl+U** runs the Face Subdivide action on selected quad faces.
+- **Cmd/Ctrl+I** runs the Face Inset action. Set the inset amount in the action parameters.
+- **Cmd/Ctrl+M** runs the Face Merge action on selected connected faces.
+- **Delete** removes selected faces and leaves the boundary vertices selected.
+- **T** applies the current tile, palette color, tilegraph, or nodegraph source. Explicit face selections take priority over object selections, so painting selected faces on an object affects only those faces.
+- **Arrow keys** nudge texture offsets on selected textured faces.
+- **Shift + Left / Right** rotates textures on selected textured faces.
+- **Ctrl/Cmd + Arrow keys** scales textures on selected textured faces.
+- **+ / -** push or pull selected faces along their normals.
+- **[ / ]** move selected faces vertically by one grid step.
+
+After deleting a face, switch to the **Vertex Tool** and press **F** to fill a selected boundary again.
+
+Face Subdivide keeps the newly created child faces selected. When a selected quad shares an edge with an unselected face, the subdivision adds matching midpoint vertices to the neighboring face boundary so the mesh stays attached.
+
+## Edge Editing
+
+Use the **Linedef / Edge Tool (`E`)** in 3D to select edges.
+
+Useful edge shortcuts:
+
+- **X** splits selected geometry edges. On connected quad geometry this performs a loop-cut through the quad strip.
+- With two non-neighboring vertices selected on the same face, **X** splits that face along the selected diagonal.
+- **L** expands a selected edge into an edge loop on quad geometry.
+- **C** expands a selected rim edge into the closed contour around its coplanar opening or surface boundary.
+- **[ / ]** moves selected edge vertices vertically by one grid step.
+
+Edge loops are most useful after subdividing quad faces, because they let you select a continuous row or column of edges quickly.
+
+Contours are useful for openings: select one edge of a door, window, or arch rim and press **C** to select the complete closed boundary, including irregular shapes.
+
+To create geometry that fits an existing opening exactly, select one rim edge and press **C**, then **L** to include the matching contour on the other side. Run **Create Fitted Geometry**. Eldiron copies the selected reveal band, caps both contours, and selects the resulting independent solid. The wall remains unchanged, and the new object can be edited into a door, window, frame, or Prefab.
+
+Moved edge vertices snap to absolute grid positions. Auto-merge can run after drag or gizmo movement when moved vertices land on existing vertices.
+
+The **Linedef / Edge Tool** can also draw surface-local line segments on a selected face. Select a face with the **Sector / Face Tool**, switch to **Linedef / Edge**, then click points on the face. The first click creates the first visible surface-line point, further clicks continue the polyline, clicking the first point closes the loop, and **Escape** ends the current polyline.
+
+Surface lines are editable guides until an action turns them into geometry. Click a surface-line point or segment to select the whole connected shape, use **Shift** to add shapes, use **Alt/Option** to remove shapes, drag the selection to adjust it on the face, and press **Delete** to remove it.
+
+## Surface Details And Cutouts
+
+Surface lines are the shared workflow for custom relief and holes:
+
+- **Create Ridge** turns selected surface lines into raised box-shaped, triangular, or rounded strokes.
+- **Create Groove** turns selected surface lines into recessed box-shaped, triangular, or rounded strokes.
+- **Create Cutout** turns selected closed loops into openings through the host object.
+- **Create Face** turns selected closed loops into new selectable faces on the host object without cutting through it.
+- **Duplicate Surface Detail** repeats the selected guide shape on the same face using face-local offsets.
+- **Surface Curve** sets selected guide segments, or the shortest path between two selected guide points, to straight lines or configurable arcs. Positive and negative amounts bend the arc in opposite directions, so the same drawn loop can become a plain cutout, an arched opening, or a decorative curved pattern.
+- **3D Paint** adds persistent surface-space paint to 3D geometry for organic details such as moss, cracks, dirt, grass, puddles, stamps, and generated brick/tile patterns.
+
+Ridges and grooves become persistent Geometry Objects, are selected after creation, and inherit the tile, color, tilegraph, or nodegraph source from the host face by default. This makes small details like mortar lines, brick seams, carved floor patterns, and raised borders immediately visible without selecting and painting each tiny face.
+
+Create Cutout uses the actual closed loop shapes, including curved arc segments. It rebuilds the front face and the opposite face around the openings, then creates reveal faces through the object thickness. If the guide loop spans a face that has been split into coplanar pieces, the cutout rebuilds the full coplanar surface island instead of only the small host quad. The guide loops remain selected after the cutout, so they can be moved, duplicated, reused, or deleted explicitly. Surface guides can also be reselected on the rebuilt surface ring, which makes repeated custom windows, vents, floor holes, arched openings, and non-rectangular cuts possible without redrawing the original shape.
+
+Create Face uses the same closed guide loops but only adds a new coplanar face and selects it. Use it when you want to draw a footprint on a floor or wall and immediately extrude that footprint into new geometry.
+
+Planned surface-region actions build on the same guide loops. A closed guide should eventually be usable not only for cutting through, but also for carving or chipping away the interior, raising the interior as relief, splitting the interior into new paintable faces, or creating decorative color/tile regions such as flower leaves, mosaics, and carved panels. The guide remains the authored shape; the selected action decides how that region becomes geometry or material assignment.
+
+The contextual shortcut overlay at the bottom of the geometry editor follows the current 3D selection and is hidden when there is no relevant guidance. When a surface detail is selected, it lists the available relief actions. When the selected detail is a closed loop, it also lists Create Face and Create Cutout.
+
+## Vertex Editing
+
+Use the **Vertex Tool (`V`)** in 3D to select vertices.
+
+Useful vertex shortcuts:
+
+- **X** splits selected geometry edges when the selected vertices form object edges.
+- **F** fills a selected vertex boundary with a face.
+- **L** expands a selected edge into an edge loop on quad geometry.
+- **[ / ]** moves selected vertices vertically by one grid step.
+
+Vertex editing is the escape hatch for custom shapes: delete a face, move the boundary vertices, and fill it again when the shape is ready.
+
+Moved vertices snap to absolute grid positions. Auto-merge can run after drag or gizmo movement when moved vertices land on existing vertices.
+
+Use **Edit Vertex** with one selected 3D vertex to enter exact world coordinates for that vertex.
+
+## Applying Tiles And Colors
+
+3D faces can use the same visual sources as the rest of Eldiron:
+
+- tiles from the Tile Picker
+- Art Palette colors from the Palette dock
+- tilegraphs
+- nodegraphs
+
+Art Palette colors keep their own material preset and finish metadata, so changing an Art Palette entry's material updates 3D surfaces that use that palette index.
+
+Select one or more faces with the **Sector / Face Tool** and press **T**, or use the relevant dock apply button.
+
+Faces can either repeat a tile in 1x1 world units or scale the source across the selected face, depending on the active tile application mode. Applying or clearing tile and palette sources uses selected faces first; if no individual faces are selected, selected objects apply to all of their faces.
+
+Use **Edit Face Texture** on selected faces, or on a selected object, to adjust texture offset, scale, and rotation. Explicit face selections take priority, so selecting one face on an object edits only that face; selecting the object edits every face. Parameter changes update the 3D view immediately. Texture scale follows the old 3D path convention: larger scale values make the source cover a larger area, while smaller values repeat it more tightly. For selected textured faces, the arrow shortcuts can also adjust offset, rotation, and scale without opening the action parameters.
+
+## Reusable Prefabs
+
+Select one or more Geometry Objects in Object mode and run **Create Linked Prefab** to create a reusable source asset and replace the selection with a linked instance. Use **Create Prefab Copy** when the source asset should be created without replacing the original geometry. Every Prefab has a stable UUID; linked instances share source geometry and paint while keeping independent placement and runtime state.
+
+The **Prefab Tool** opens the **Prefabs** dock for browsing and placing linked assets. Select a project Prefab, then use the top-right **Edit / Maximize Dock** control (`Cmd/Ctrl + [`) to open the isolated Prefab editor. There, the normal Object, Face, Edge, Vertex, camera, undo, and 3D Paint tools edit the shared source. The lower editor panel contains the hierarchical Prefab / part / Geometry Object tree, part properties, pivots, and Prefab-specific controls. Use **Restore Dock** (`Cmd/Ctrl + ]`) to return to the normal split layout.
+
+Use **Make Prefab Unique** when one linked instance needs its own source, or **Unpack Prefab** to convert an instance back into ordinary Geometry Objects. **Update Prefab Source** replaces the shared source from selected Geometry Objects without changing its UUID or existing links.
+
+## Suggested Blockout Workflow
+
+1. Use **Create Box** for the first fitted block, or **Create Unit Box** for a centered unit primitive.
+2. Resize and duplicate boxes with the **Object Tool**.
+3. Select faces with the **Sector / Face Tool** and extrude them to build connected walls, floors, ledges, and rooms.
+4. Subdivide faces with **Cmd/Ctrl+U** or inset them with **Cmd/Ctrl+I** when you need smaller editable regions.
+5. Use **Linedef / Edge** surface lines for ridges, grooves, custom cutouts, and surface relief.
+6. Use **Vertex** tools for boundary fill, cleanup, and custom shapes.
+7. Paint faces with tiles, Art Palette colors, tilegraphs, or nodegraphs.
+8. Use **3D Paint** to add organic surface detail that remains attached to the clean 3D structure in every 3D camera.
+
+This workflow is meant to stay realtime while editing.
+
+## Collision And Placement
+
+When a project uses mesh collision, direct Geometry Objects feed the runtime collision world. Floors, walls, extruded faces, and cutout reveals are taken from the edited mesh, so the player can walk on authored floors and collide with authored walls.
+
+Character and item placement in 3D editor views snaps previews to the geometry floor height when possible. If the cursor hits overhead geometry such as a roof awning, placement prefers the floor below that surface so entities can be placed and rendered under cover instead of on the highest overlapping surface.
+
+## 2D Map Reference
+
+Geometry Objects are responsible for the visible 3D world.
+
+The 2D map is still useful as a top-down reference and as project data for:
+
+- gameplay zones
+- triggers and metadata
+- minimap data
+
+In 3D views, existing 2D linedefs are projected onto the floor plane as a faint reference overlay. For visible 3D construction, use Geometry Objects:
+
+- houses, dungeons, walls, floors, platforms, and props
+- direct face, edge, and vertex editing

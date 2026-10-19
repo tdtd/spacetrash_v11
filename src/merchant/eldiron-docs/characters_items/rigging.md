@@ -1,0 +1,235 @@
+---
+title: "Character Rigging with Avatars"
+sidebar_position: 4
+---
+
+Rigging in Eldiron lets a character avatar adapt visually to equipped gear:
+
+- armor can recolor body parts
+- weapons can attach to hand anchors
+- front/back/left/right views are handled automatically
+
+Think of the avatar as the base body, and equipped items as visual modifiers on top.
+
+To enable avatar-based rendering on a character, set an avatar in the character attributes, for example:
+
+```toml
+avatar = "human"
+size_2d = 1.25
+```
+
+Use `size_2d` when a 2D avatar should render larger without affecting the 3D `size` billboard scale or any gameplay/collision behavior.
+
+---
+
+## Tutorial Video
+
+Avatar setup and rigging walkthrough:
+
+<div style={{ position: "relative", paddingBottom: "56.25%", height: 0, overflow: "hidden", marginBottom: "1rem" }}>
+  <iframe
+    src="https://www.youtube.com/embed/kmObqQil62k"
+    title="Avatar Tutorial Video"
+    style={{ position: "absolute", top: 0, left: 0, width: "100%", height: "100%", border: 0 }}
+    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+    referrerPolicy="strict-origin-when-cross-origin"
+    allowFullScreen
+  />
+</div>
+
+---
+
+## Typical Workflow
+
+- Create or edit your character avatar in the Avatar Editor.
+- Set base body-part colors in the character attributes.
+- Add hand anchors (`Main Hand`, `Off Hand`) on the avatar frames you need.
+- Configure item attributes so equipped armor/items can override those colors and add weapon overlays.
+- Equip items in-game (or via scripts) and verify the visual result.
+
+---
+
+## Armor Item Overrides
+
+Body-part colors are first read from the character attributes. Equipped armor items can then override those same body-part colors. This is how one armor set can recolor torso/legs/skin/hair without replacing all sprites.
+
+Supported body parts:
+
+- `light_skin` (`rgb(255, 0, 255)`)
+- `dark_skin` (`rgb(200, 0, 200)`)
+- `torso` (`rgb(0, 0, 255)`)
+- `arms` (`rgb(0, 120, 255)`)
+- `legs` (`rgb(0, 255, 0)`)
+- `hair` (`rgb(255, 255, 0)`)
+- `eyes` (`rgb(0, 255, 255)`)
+- `hands` (`rgb(255, 128, 0)`)
+- `feet` (`rgb(255, 80, 0)`)
+
+For each body part, choose either:
+
+- palette index: `<body_part>_index`
+- exact color: `<body_part>_color`
+
+```toml
+torso_index = 3
+legs_color = "#7c5533"
+```
+
+If both character and equipped item define a body part color, equipped item values win.
+
+---
+
+## Weapon Item Overlays
+
+Weapons are drawn as overlays attached to avatar hand anchors.
+
+Useful item attributes:
+
+- `tile_id` (required): source tile for weapon sprite. Accepts UUID, tile alias, or palette index.
+- `rig_scale` (optional): weapon scale, default `1.0`
+- `rig_pivot` (optional): attach point on weapon sprite, default center
+- `rig_layer` (optional): hand-depth ordering, `"front"` or `"back"` (default `"front"`)
+- `rig_flip_back` (optional): if no `tile_id_back` is set, flip weapon horizontally in back view (default `true`)
+
+```toml
+tile_id = "YOUR_WEAPON_TILE"
+# or:
+# tile_id = "weapon_sword"
+# tile_id = "12"
+rig_scale = 0.8
+rig_pivot = [0.5, 0.5]
+rig_layer = "back"
+rig_flip_back = true
+```
+
+`rig_pivot` meaning:
+
+- `[0.0, 0.0]` top-left
+- `[0.5, 0.5]` center
+- `[1.0, 1.0]` bottom-right
+
+String format is also accepted:
+
+```toml
+rig_pivot = "0.5, 0.5"
+```
+
+`rig_layer` controls draw order relative to the hand (while staying in front of the body):
+
+- `"back"`: behind hand, in front of body
+- `"front"`: in front of hand
+
+You can also provide perspective-specific weapon tiles:
+
+- `tile_id_front`
+- `tile_id_back`
+- `tile_id_left`
+- `tile_id_right`
+
+If missing, `tile_id` is used for all perspectives.
+
+---
+
+## Anchors In Avatar Frames
+
+Weapon placement depends on avatar anchors:
+
+- `Main Hand`
+- `Off Hand`
+
+Best practice:
+
+- place anchors on each animation frame where weapon motion matters
+- keep anchor movement smooth between frames
+- verify all perspectives used by your game
+
+If a specific frame anchor is missing, Eldiron falls back to available perspective data.
+
+---
+
+## Equip Slots For Weapons
+
+Set the item `slot` to a name declared by the active ruleset's
+`equipment.weapon_slots` or `equipment.armor_slots`.
+
+Map slots that should render in an avatar hand:
+
+```toml
+[equipment]
+weapon_slots = ["grip", "brace"]
+armor_slots = ["shield_mount"]
+
+[equipment.avatar_anchors]
+grip = "main_hand"
+brace = "off_hand"
+shield_mount = "off_hand"
+```
+
+The keys can use any ruleset-owned slot names. The values name the two anchor
+capabilities currently exposed by avatar frames: `main_hand` and `off_hand`.
+The runtime does not infer aliases. Omit a slot from `avatar_anchors` when its
+item should not be composited onto the avatar.
+
+---
+
+## Perspective Draw Behavior
+
+By default:
+
+- front/left/right: body first, then weapon overlay
+- back: weapon first, then body
+
+This makes back-view weapons feel properly behind the character.
+
+---
+
+## Update Behavior
+
+Rig visuals update when equipment or rig-related character data changes.
+
+If you do not see the expected result right away, re-check the equipped items and their attributes.
+
+---
+
+## Preview Tuning In Character Data
+
+In the character **Rigging Preview** TOML, you can override weapon transform per slot without changing the item data.
+
+```toml
+animation = "Idle"
+perspective = "Front"
+play = true
+speed = 1.0
+
+[slots]
+off_hand = "Shield"
+
+[slot_overrides.off_hand]
+rig_scale = 0.85
+rig_pivot = [0.45, 0.58]
+```
+
+Notes:
+
+- `slot_overrides` is preview-only (non-destructive).
+- Keys under `slot_overrides` must match the slot key from `[slots]`.
+- You can still keep final `rig_scale` / `rig_pivot` on the item itself.
+
+---
+
+## Quick Example (Armor + Weapon)
+
+```toml
+# Armor-like item
+slot = "torso"
+torso_color = "#8b5a2b"
+legs_index = 4
+
+# Weapon-like item
+slot = "weapon_main"
+tile_id = "YOUR_SWORD_TILE"
+rig_scale = 0.9
+rig_pivot = [0.45, 0.5]
+```
+
+After equip, the avatar should reflect the new armor colors and weapon overlay.

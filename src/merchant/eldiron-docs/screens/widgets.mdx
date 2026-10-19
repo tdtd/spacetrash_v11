@@ -1,0 +1,1080 @@
+---
+title: "Widgets"
+sidebar_position: 2
+---
+
+import Admonition from '@theme/Admonition';
+
+### Widget Drawing Order
+
+Every widget supports a **layer** index attribute in its **ui** section, higher layer values are drawn later. Except the **game widget** which is always drawn first. The default **layer** value is 0.
+
+```toml
+[ui]
+layer = 1
+```
+
+## Game Widgets
+
+Use a widget with **role = "game"** to render the game inside a screen. The game layer is always drawn first and the other widgets on top of it.
+
+### UI Section
+
+- **role = "game"** draws the game output into this widget region.
+- **grid_size** (2D): pixel size of one tile (zoom level); if omitted, it falls back to **[viewport].grid_size**.
+- **upscale** (3D): render at **(widget size ÷ upscale)** and scale back up; **1** keeps native size, higher values soften, lower values sharpen.
+- **chunk_load_radius**: number of chunk rings around the player that should be loaded immediately. Default: **2**.
+- **chunk_prefetch_radius**: wider background streaming radius around the player. Chunks outside this radius are unloaded. Default: **5**.
+- **chunk_build_budget_near**: max chunk builds per frame while near chunks are still missing. Higher values reduce startup wait but can cost frame time. Default: **10**.
+- **chunk_build_budget_far**: max chunk builds per frame after near chunks are loaded (background streaming). Default: **2**.
+- **target_frame_size**: silhouette frame thickness in avatar source pixels for the current in-game target and active attackers. Defaults to `1`; use `0` to hide these frames for this game widget.
+- **target_frame_color** / **target_frame_color_index**: current target silhouette frame color as a hex color or Art Palette index.
+- **attacker_frame_color** / **attacker_frame_color_index**: silhouette frame color for entities whose `attack_target` points at the leader.
+
+On startup, chunks around the player are built first. Farther chunks inside `chunk_prefetch_radius` are streamed in later.
+
+### Camera Section
+
+- **type**: Rendering camera mode: `2d`, `2d_grid`, `iso`, `firstp`, `firstp_grid`, or `firstp_mouse`.
+- **mouse_sensitivity** (`firstp_mouse`, optional): degrees of turning per mouse-motion unit; default `0.2`.
+- **invert_y** (`firstp_mouse`, optional): reverse vertical mouse look; default `false`.
+
+`firstp_mouse` looks horizontally and vertically when the pointer is over the game viewport. No mouse button is required. Moving onto the UI or leaving the window stops mouse look. Vertical look is limited to 85 degrees up or down; horizontal turning updates the character's facing. Set the player's camera to `firstp_mouse` as well so movement follows that facing.
+- **azimuth** (iso, optional): horizontal rotation in degrees. If omitted, camera default is used.
+- **elevation** (iso, optional): vertical angle in degrees. Higher values look more top-down and help seeing inside buildings. If omitted, camera default is used.
+- **scale** (iso, optional): orthographic half-height (zoom). Larger values zoom out. If omitted, camera default is used.
+
+Legacy aliases are still accepted for compatibility: `azimuth_deg`, `elevation_deg`.
+ 
+<Admonition type="note" title="player input controls">
+This setting only affects **rendering**. It does **not** change how player input controls the camera.  
+To define player camera behavior, see [Player Camera](/docs/characters_items/node_reference#state-text-and-inventory).
+</Admonition>
+
+### Camera Safe Area Section
+
+Use `[camera_safe_area]` on a 2D game widget when HUD widgets overlay part of the game view. The game still renders into the full widget, but the player is framed inside the remaining usable area.
+
+```toml
+[camera_safe_area]
+right = 360
+bottom = 96
+```
+
+- **left**, **right**, **top**, **bottom**: safe-area margins in widget pixels. Omitted values default to `0`.
+- The safe area affects 2D camera framing only. It does not clip rendering or change input hit testing.
+
+### Say Section
+
+Use `[say]` on a game widget to style speech bubbles produced by `say(...)`.
+These settings are presentation-specific, so different game widgets can use different bubble colors or backgrounds.
+
+```toml
+[say]
+duration = 1.0                 # How long say bubbles stay visible, in in-game minutes.
+default = "#E5E501"            # Default text color when category is empty or unknown.
+background_enabled = true      # Draw a background rectangle behind say text.
+background_color = "#00000080" # Background RGBA color (#RRGGBBAA).
+
+# Optional per-category text colors:
+npc = "#FFFFFF"
+warning = "#FF6666"
+quest = "#66CCFF"
+```
+
+- **duration**: Lifetime of a `say(...)` bubble in in-game minutes. The runtime uses the first active game widget duration and falls back to `1.0`.
+- **default**: Fallback text color for `say("Text")` or unknown categories.
+- **background_enabled**: Enables or disables the bubble background rectangle.
+- **background_color**: Background color including alpha, for example `#00000080` for 50% black.
+- **Category keys**: Any extra key in `[say]` is treated as a text color category used by `say("Text", "category_name")`.
+
+Legacy projects with global game-config `[say]` still work as a fallback, but new projects should keep this section on the game widget.
+
+### Examples
+
+```toml
+[ui]
+role = "game"
+grid_size = 40
+upscale = 1.5
+chunk_load_radius = 2
+chunk_prefetch_radius = 5
+chunk_build_budget_near = 10
+chunk_build_budget_far = 2
+target_frame_color = "#ACB6C2D2"
+attacker_frame_color = "#E04340EB"
+target_frame_size = 1
+
+[camera]
+type = "firstp"
+
+[say]
+default = "#E5E501"
+warning = "#FF6666"
+background_enabled = true
+background_color = "#00000080"
+```
+
+```toml
+[ui]
+role = "game"
+grid_size = 40
+
+[camera]
+type = "iso"
+azimuth = 135.0
+elevation = 50.0
+scale = 6.0
+```
+
+---
+
+## Action Bar Widgets
+
+Use one **action bar widget** to define a complete horizontal bottom bar. At runtime Eldiron expands its entries into ordinary button widgets. Ruleset icons, tooltips, requirements, cooldowns, targeting, keyboard shortcuts, and action-slot assignment therefore work exactly like they do on hand-authored buttons.
+
+```toml
+[ui]
+role = "action_bar"
+fill_width = true
+slot_size = 44
+spacing = 2
+padding = 5
+edge_padding = 14
+group_spacing = 12
+
+# Built-in panel used when this screen has no role = "inventory" widget.
+[ui.inventory]
+columns = 8
+rows = 5
+cell_size = 48
+spacing = 4
+padding = 10
+title = "Inventory"
+font = "Roboto-Bold"
+categories = [
+  { label = "All", value = "all" },
+  { label = "Equipment", value = "equipment" },
+  { label = "Consumables", value = "consumables" },
+  { label = "Materials", value = "materials" },
+  { label = "Misc", value = "misc" },
+]
+sort_options = ["Newest", "Name", "Value", "Quantity"]
+
+# Built-in Equipment. Slot ids come from the active ruleset's [equipment].
+[ui.equipment]
+slot_size = 52
+spacing = 8
+padding = 10
+column_gap = 12
+label_width = 70
+avatar_width = 150
+avatar_height = 292
+avatar_scale = 1
+title = "Equipment"
+font = "Roboto-Bold"
+
+# Compact player preferences popover.
+[ui.preferences]
+width = 290
+row_height = 32
+title = "Preferences"
+font = "Roboto-Bold"
+
+# Built-in panel used when this screen has no role = "spellbook" widget.
+[ui.spellbook]
+columns = 6
+rows = 4
+cell_size = 52
+spacing = 4
+padding = 10
+icon_inset = 6
+show_names = false
+show_tabs = true
+show_details = true
+detail_width = 260
+title = "Spellbook"
+font = "Roboto-Bold"
+title_font = "Roboto-Bold"
+font_size = 14
+title_font_size = 20
+small_font_size = 12
+
+[[ui.groups]]
+align = "left"
+buttons = [
+  { command = "ui.preferences" },
+  { command = "ui.equipment" },
+  { command = "ui.inventory" },
+  { command = "ui.spellbook" },
+]
+
+[[ui.groups]]
+align = "center"
+buttons = [
+  { command_slot = "main.0" },
+  { command_slot = "main.1" },
+  { command_slot = "main.2" },
+  { command_slot = "main.3" },
+  { command_slot = "main.4" },
+  { command_slot = "main.5" },
+  { command_slot = "main.6" },
+  { command_slot = "main.7" },
+  { command_slot = "main.8" },
+  { command_slot = "main.9" },
+]
+
+[[ui.groups]]
+align = "right"
+buttons = [
+  { command = "intent.look" },
+  { command = "intent.use" },
+]
+
+[layout]
+anchor = "bottom_center"
+x = 0
+y = 0
+
+[frame]
+background_color = "#15120dcc"
+# tile = "<frame tile UUID>"
+# slice = 8
+
+[top_separator]
+size = 1
+inset = 0
+offset = -2
+color = "#5f5949"
+
+[slot]
+background_color = "#211c15ee"
+# icon_inset = 8
+# normal_tile = "<normal slot tile UUID>"
+# hover_tile = "<hover slot tile UUID>"
+# selected_tile = "<selected slot tile UUID>"
+# pressed_tile = "<pressed slot tile UUID>"
+# disabled_tile = "<disabled slot tile UUID>"
+# slice = 6
+
+# Optional decorative artwork drawn above the command icon.
+#[slot.frame]
+#normal_tile = "<normal foreground frame tile UUID>"
+#hover_tile = "<hover foreground frame tile UUID>"
+#selected_tile = "<selected foreground frame tile UUID>"
+#pressed_tile = "<pressed foreground frame tile UUID>"
+#disabled_tile = "<disabled foreground frame tile UUID>"
+#slice = 6
+
+[slot.style.hover]
+background = "#322a1fee"
+border = "#a38a60"
+```
+
+- **groups** divides the bar into `left`, `center`, and `right` clusters. Each group owns its `buttons` and may override `slot_size` and `spacing`.
+- **group_spacing** controls the separation between groups. With automatic sizing, Eldiron reserves equal space on both sides of the center group so it remains visually centered.
+- `ui.preferences`, `ui.equipment`, `ui.inventory`, `ui.spellbook`, and `ui.actions` are navigation commands and normally belong in the left group. They are not executable ruleset actions. The modern player HUD normally exposes Preferences, Equipment, Inventory, and Spellbook; add `ui.actions` when a complete generic ruleset catalogue is useful, such as a compact or hardcoded UI.
+- `[ui.inventory]` configures the built-in Inventory. `columns`, `rows`, `cell_size`, `spacing`, and `padding` control the paged grid; `categories` / `tabs` and `sort_options` configure its reusable tab bar and dropdown. The panel uses normal item icons and ruleset tooltips, opens containers on click, and supports moving, swapping, and dropping items.
+- `[ui.equipment]` configures the built-in Equipment panel. Slot ids are resolved from the active ruleset's ordered `equipment.weapon_slots` and `equipment.armor_slots`; the UI never guesses official names. Eldiron alternates those slots around a live, equipped avatar by default. Optional `left_slots` and `right_slots` arrays override only their visual placement, while `slot_size`, `spacing`, `column_gap`, `label_width`, `avatar_width`, `avatar_height`, and `avatar_scale` control presentation. Items can be dragged between Inventory and Equipment and retain normal item tooltips. A screen sector with `role = "equipment"` can replace the toolbar default rectangle and styling.
+- `[ui.preferences]` styles the compact Preferences popover opened by `ui.preferences`. Its current controls enable or disable item/command tooltips, choose an instant, short, or normal tooltip delay, and reset remembered floating-window positions. These preferences remain active while the client is running.
+- `[ui.spellbook]` configures the Toolbar's built-in Spellbook. `columns` and `rows` define a fixed content viewport, so changing tabs never moves or resizes the panel; `cell_size`, `spacing`, `padding`, and `icon_inset` control the icon grid. `show_tabs`, `show_details`, `detail_width`, `show_names`, and optional `show_assign` control the presentation. Overflowing abilities use page controls, a vertical scrollbar, and the mouse wheel. The structured detail pane separates summary, target/range/cost data, effects, and availability, and gains its own scrollbar when necessary. `[ui.actions]` accepts the same settings for the generic Actions catalogue.
+- Typography is deterministic and configurable: `font` controls body, tab, and group text; `title_font` optionally overrides headings; and `font_size`, `title_font_size`, and `small_font_size` control their sizes. Names resolve against project font assets. Missing or omitted fonts use Eldiron's embedded **Roboto Bold** UI font instead of an arbitrary project font.
+- Panel colors can be customized with `title_background_color`, `text_color`, `muted_text_color`, `detail_background_color`, `tab_background_color`, `tab_selected_color`, and `separator_color`.
+- `[ui.spellbook.frame]` and `[ui.spellbook.slot]` optionally style the built-in panel. They accept `background_color`, `border_color`, `border_size`, and artist-authored `tile` / `slice` values; the slot also accepts `normal_tile`. The same child tables work below `[ui.actions]`.
+- Built-in panels are the zero-setup path: a screen only needs its action-bar widget and the matching `ui.*` command. A screen sector with `role = "inventory"`, `role = "spellbook"`, or `role = "actions"` overrides that panel's Toolbar configuration and authored rectangle, letting a game replace the default layout without changing the underlying data or commands.
+- Navigation-command artwork is supplied by `[ui.commands.<name>]` in the ruleset. The official artist-editable placeholders include `assets/icons/ui_preferences/on/0.png`, `ui_equipment`, `ui_inventory`, `ui_spellbook`, and `ui_actions` using the same directory structure.
+- On responsive screens, an action bar without a `[layout]` block defaults to `bottom_center` with a 16-pixel bottom margin. Add `[layout]` when you want an explicit anchor or offset.
+- For a simple bar, the original top-level **buttons** array remains supported and behaves as one centered group.
+- Each button accepts `command`, `command_slot`, `label` (or `text`), and `show_icon`.
+- A string entry is shorthand for a command, for example `buttons = ["intent.look", "ui.actions"]`.
+- **slot_size**, **spacing**, and **padding** are measured in screen pixels.
+- **edge_padding** independently controls the left and right inset of the outer groups. When omitted it uses `padding`; increasing it does not make the toolbar taller.
+- **auto_size** defaults to `true`; the bar's width and height are calculated from its entries. Set it to `false` to use the sector's authored dimensions and center the slots inside it.
+- **fill_width** keeps the automatically calculated height but stretches a responsive action bar across the viewport. Combined with `anchor = "bottom_center"` and `y = 0`, this creates a bottom-attached HUD band instead of a floating framed panel.
+- **party** on `[ui]` binds every generated button to the same party member.
+- The tile assigned to the action-bar sector in the Creator is used as its frame artwork. `[frame].tile` can explicitly select a different frame tile by UUID.
+- `[slot]` controls every generated button. Colors and borders work without artwork. Its optional state tiles draw below the command icon; `[slot.frame]` uses the same state keys for decorative artwork drawn above the icon. Omitted states fall back to normal artwork.
+- `slice` enables nine-slice scaling and is measured in source-image pixels. Corners remain unscaled while edges and the center adapt to the bar or slot size. Leave it at `0` or omit it to stretch the complete image.
+- `icon_inset` is the empty space between the slot edge and its command artwork, measured in screen pixels. When omitted, Eldiron uses the existing 12% inset.
+- `[frame.border]` and `[slot.border]` draw scalable, anti-aliased borders above the artwork. `from` and `to` define the linear gradient; `direction` accepts `vertical`, `horizontal`, `diagonal`, or `diagonal_reverse`. Omit `to` for a solid border. `radius` rounds the corners. Individual button and decoration widgets can use the same fields under `[ui.border]`. The older flat `border_size` and `border_color` keys remain supported.
+- `[separator]` draws one vertical line in the open space between adjacent action-bar groups. It supports `size`, vertical `margin`, and optional `from`/`to` gradient colors. Use separators for navigation/action bands without drawing another frame around every slot.
+- `[top_separator]` draws only a horizontal hairline along the upper edge of the bar. It supports `size`, horizontal `inset`, vertical `offset`, a solid `color`, or `from`/`to` gradient colors. Negative offsets move the line above the bar. It is the appropriate choice for a full-width bottom toolbar that should not have an enclosing rectangle.
+
+Use `[layout]` when the bar should deviate from its responsive bottom-center default. Fixed screens retain the sector's authored position.
+
+---
+
+## Button Widgets
+
+**Button widgets** define interactive UI elements that trigger commands when clicked.
+
+Buttons are **visually styled** using the **tiles** assigned through the **Tile Picker** dock, or with text styling for menu/start-screen buttons.
+
+In the HUD you can select between two icons per sector:
+
+- The **default (normal)** state.
+- The **selected** state is shown when the button is active or when its bound `value` matches the current `bind` value.
+
+If only those two icons exist, Eldiron keeps using them. Pressed buttons temporarily use the selected icon as their fallback; disabled buttons use the normal icon plus the disabled/cooldown overlay.
+
+### UI Section
+
+- **command** - Preferred input binding. Use `control.forward`, `intent.attack`, `rules.basic_attack`, or `ui.actions`.
+- **action** - Legacy movement action such as `forward`; loaded as `control.forward`.
+- **intent** - Legacy intent such as `use`; loaded as `intent.use`.
+- **spell** - Legacy spell template name used when `intent = "spell"`; loaded as `intent.spell:<template>`.
+- **inventory_index** - Draw and interact with the inventory item at that slot using the intent.
+- **equipped_slot** - Draw and interact with the equipped item in that slot (for example `main_hand`, `off_hand`) using the intent.
+- **party** - Optional UI binding target for this widget. If omitted, Eldiron uses the current **leader** for backward compatibility. Supported values today are `leader`, `party.0`, `party.1`, ... and named bindings that match a character's `party_role` or `name`.
+- **portrait** - If `true`, the button draws the bound character's `portrait_tile_id` instead of an inventory/equipped item.
+- **drag_drop** - Enable drag-and-drop interaction for this inventory/equipped slot button.
+- **show / hide** - Toggle specific widgets when clicked.
+- **deactivate** - Turn off other buttons when clicked.
+- **active** - Set this button’s state to active by default.
+- **bind** / **binding** - Optional UI state key updated by this button, for example `start.class`.
+- **value** - Value written to the bound UI state key when clicked.
+- **append** / **binding_append** - Append `value` to the current bound UI state instead of replacing it. Useful for rune/spell queues.
+- **separator** / **binding_separator** - Separator used while appending values. Defaults to a space.
+- **max_parts** / **binding_max_parts** - Maximum number of appended parts to keep.
+- **selection** - Use `"single"` for mutually exclusive choice buttons. A button is selected when its `value` matches the current value of `bind`.
+- **group** - Optional group name. Buttons with `bind` and `group` default to single-choice behavior.
+- **camera** - Switch game widget rendering camera: `2d`, `2d_grid`, `iso`, `firstp`, `firstp_grid`, `firstp_mouse`.
+- **player_camera** - Switch player input mapping camera mode on the server using the same mode names.
+- **camera_target** - Optional target game widget name; if omitted, applies to all game widgets.
+- **border_size** - An optional border for the button. Default size is 0 (no border).
+- **border_color** - The color for the border. Default is white ("#FFFFFF").
+- **text** / **label** - Optional centered button text.
+- **show_icon** - Set to `false` to render a command button as text-only while keeping its command binding.
+- **font** - Font used by text buttons.
+- **font_size** - Text size for text buttons.
+- **color** - Text color for text buttons.
+- **background_color** - Optional button background color. Supports alpha, for example `"#111111cc"`.
+
+Button state colors can be set either as flat fields or with nested style tables. Nested tables keep larger widgets more readable:
+
+```toml
+[ui]
+role = "button"
+text = "Warrior"
+background_color = "#111111cc"
+border_color = "#888888"
+
+[ui.style.hover]
+background = "#222222dd"
+border = "#aaaaaa"
+
+[ui.style.selected]
+background = "#3a3320dd"
+border = "#eed676"
+text = "#fff1a8"
+
+[ui.style.pressed]
+background = "#262018dd"
+border = "#d8bd5f"
+
+[ui.style.disabled]
+background = "#080808aa"
+border = "#555555"
+text = "#888888"
+```
+
+Equivalent flat fields are also supported: `hover_background_color`, `hover_border_color`, `hover_color`, `selected_background_color`, `selected_border_color`, `selected_color`, `pressed_background_color`, `pressed_border_color`, `pressed_color`, `disabled_background_color`, `disabled_border_color`, and `disabled_color`.
+
+Buttons with `rules.*` commands resolve their label, description, costs, requirements, and cooldown display from the active ruleset. During cooldown the button is visually dimmed and shows a cooldown fill overlay. Inventory, equipped-slot, command, and hovered world-item buttons also use the same rules description data for hover tooltips.
+
+The following attributes let `intent` buttons show specific mouse cursors when hovering or clicking an entity or item. They work in 3D, and also in 2D when `[game].click_intents_2d = true`:
+- **entity_cursor_id** - The [tile id](/docs/what_is/#tile-id) for the mouse cursor when hovering above a character.
+- **entity_clicked_cursor_id** - The [tile id](/docs/what_is/#tile-id) for the mouse cursor when clicking a character.
+- **item_cursor_id** - The [tile id](/docs/what_is/#tile-id) for the mouse cursor when hovering above an item.
+- **item_clicked_cursor_id** - The [tile id](/docs/what_is/#tile-id) for the mouse cursor when clicking an item.
+
+---
+
+### Drag And Drop Slots
+
+Buttons that represent `inventory_index` or `equipped_slot` automatically enable drag-and-drop unless you explicitly set `drag_drop = false`.
+
+- Click/release on the same slot still triggers normal intent handling (for example `look`).
+- Dragging an item and releasing on another slot moves or swaps items.
+- Dropping onto an equipped slot is validated against the item's `slot` attribute.
+- Incompatible equipment drops are ignored (for example `main_hand` item into `off_hand` slot).
+- World items can also be dragged directly into slot widgets.
+- Dragging an owned item out of a slot and onto terrain drops it into the world.
+- Slot widgets can bind to different party members using `party`.
+
+```toml
+[ui]
+role = "button"
+inventory_index = 0
+party = "leader"
+```
+
+```toml
+[ui]
+role = "button"
+equipped_slot = "main_hand"
+party = "party.1"
+```
+
+```toml
+[ui]
+role = "button"
+portrait = true
+party = "leader"
+```
+
+---
+
+### Example #1
+
+In this example, clicking the button causes the player to **move forward**.
+
+```toml
+[ui]
+role = "button"
+command = "control.forward"
+# command = "intent.talk"
+# command = "intent." # Walk / default targeting mode
+# command = "rules.basic_attack"
+# command_slot = "main.0" # resolved from the active player's class action bar
+# party = "leader"
+# inventory_index = 0
+# equipped_slot = "main_hand"
+# portrait = true
+# text = "Start Game"
+# font = "Tiny5-Regular"
+# font_size = 28.0
+# color = "#f2f2f2"
+# background_color = "#111111cc"
+# border_size = 1
+# border_color = "#888888"
+```
+
+Use `command = "intent."` or `intent = ""` for an optional Walk button. It does not move the player directly; it restores the normal map cursor and clears active targeting commands. You can omit it when your game does not need an explicit way to leave a persistent targeting mode.
+
+Command buttons resolve ruleset icons through `[actions.<id>.ui]`,
+`[intents.<id>.ui]`, `[ui.commands.<name>]`, and the shared `[icons]` catalog. A resolved ruleset icon
+uses its authored RGBA colors for Normal, becomes brighter on Hover, receives a
+warm in-icon tint when Selected, becomes darker while Pressed, and is grayed
+with reduced opacity when Disabled. Selection does not add an outline. Project
+textures can still override a button by assigning custom
+normal/selected/pressed/disabled textures on the widget itself.
+
+Inventory and equipped-slot buttons use an item's **On** or **Off** icon state.
+An `active` boolean selects On when true and Off when false; otherwise a string
+`state = "off"` selects Off and all other or missing state values select On. If
+the item has no Off artwork, its On artwork remains the visual fallback.
+
+If a button command matches a key in the active player's `[input]` table, the hover tooltip shows the shortcut.
+
+Use `command_slot = "main.0"` / `main.1` / `main.2` and so on for class-driven action buttons. The slot first checks the active player for `command_slot_main_0` or `action_slot_main_0`, then falls back to `[classes.<Class>.action_bar]` in the active ruleset.
+
+### Reusable Actions Button
+
+Any game screen can open the ruleset-driven Actions panel with an ordinary button:
+
+```toml
+[ui]
+role = "button"
+command = "ui.actions"
+text = "Actions"
+show_icon = false
+```
+
+The panel reads the active player's complete `[classes.<Class>.action_bar]`, groups its commands into Combat, Spells, and Utility, and reuses the normal ruleset icons, descriptions, requirements, costs, cooldowns, unlock state, and targeting path. It is not specific to `Hideout2D`.
+
+`ui.spellbook` opens every ability known by the active class and organizes them into Combat, Spells, and Utility groups. Its default layout comes from `[ui.spellbook]` on the action bar. To replace it for one screen, add a sector with settings such as:
+
+```toml
+[ui]
+role = "spellbook"
+columns = 7
+rows = 5
+cell_size = 48
+spacing = 3
+padding = 10
+icon_inset = 6
+show_names = false
+show_tabs = true
+show_details = true
+detail_width = 260
+title = "Abilities"
+font = "My UI Font"
+title_font = "My Heading Font"
+font_size = 14
+title_font_size = 20
+small_font_size = 12
+
+[layout]
+anchor = "center"
+
+[frame]
+background_color = "#0a0c0ff2"
+border_color = "#625b48"
+border_size = 1
+# tile = "<panel frame tile UUID>"
+# slice = 8
+
+[slot]
+background_color = "#1f2329e8"
+border_color = "#484e57"
+# tile = "<slot tile UUID>"
+# slice = 6
+```
+
+The sector's rectangle and responsive `[layout]` determine the custom panel's placement and size. Frame and slot tiles use nine-slice scaling. The Spellbook still reads abilities, icons, descriptions, requirements, categories, and targeting behavior from the active ruleset.
+
+Click an action to select it for normal use. Drag an action onto any button with `command_slot = "<group>.<index>"` to assign it to that quick slot. Set `show_assign = true` when a touch-oriented layout should also expose the explicit **Assign** workflow.
+
+Assignments are persisted as player attributes such as `command_slot_main_0`. The active class action bar remains the default, so a slot with no non-empty override still resolves from the ruleset. Only ruleset actions listed in the active class action bar can be assigned.
+
+### Built-in Inventory
+
+`ui.inventory` opens the active player's Inventory panel. It is configured by `[ui.inventory]` on the action bar and needs no separate screen widget. Category tabs filter the existing inventory without changing item data; the sort dropdown supports newest slot order, name, value, and quantity. Large inventories page automatically, occupied slots show stack counts and ruleset tooltips, and the grid participates in the existing item drag-and-drop system.
+
+To give one screen its own rectangle or settings, add a normal screen widget with:
+
+```toml
+[ui]
+role = "inventory"
+columns = 9
+rows = 6
+cell_size = 46
+spacing = 4
+padding = 10
+title = "Inventory"
+font = "Roboto-Bold"
+categories = ["All", "Equipment", "Consumables", "Materials", "Misc"]
+sort_options = ["Newest", "Name", "Value", "Quantity"]
+
+[layout]
+anchor = "center"
+```
+
+The widget's authored rectangle becomes the panel's initial position and minimum size. Dragging its title moves it for the current screen session. Omit the custom widget to keep the Toolbar-defined default.
+
+For custom arrangements you can still build an action bar from individual buttons. Put a `role = "deco"` widget behind those buttons with `layer = -1` and a semi-transparent `color`. Negative-layer deco widgets draw below screen-rendered controls, which lets the background dim the map without dimming the icons.
+
+For start screens, use generic UI state bindings for choices. The selected class button stays highlighted because the button's `value` matches the current `bind` value. `game.start` reads `start.class` and `start.name` when spawning the player.
+
+```toml
+[ui]
+role = "button"
+bind = "start.class"
+value = "Warrior"
+selection = "single"
+active = true
+text = "Warrior"
+```
+
+---
+
+## Tab Bar and Dropdown Widgets
+
+Use `role = "tab_bar"` and `role = "dropdown"` for reusable choices. Both controls write the selected option's `value` to generic UI state through `binding` (or `bind`). Other widgets can read that state through their existing bindings and `{UI.<binding>}` command placeholders.
+
+Roboto Bold is embedded as the default UI font. Set `font` to the exact name of a project font asset only when a screen needs a different typeface.
+
+```toml
+[ui]
+role = "tab_bar"
+binding = "inventory.category"
+default = "all"
+font = "Roboto-Bold"
+font_size = 14
+spacing = 1
+indicator_size = 2
+tabs = [
+  { label = "All", value = "all" },
+  { label = "Weapons", value = "weapons" },
+  { label = "Armor", value = "armor" },
+  { label = "Consumables", value = "consumables" },
+]
+```
+
+```toml
+[ui]
+role = "dropdown"
+binding = "inventory.sort"
+default = "newest"
+font = "Roboto-Bold"
+font_size = 14
+item_height = 30
+open_upwards = false
+options = [
+  { label = "Newest", value = "newest" },
+  { label = "Name", value = "name" },
+  { label = "Value", value = "value" },
+]
+```
+
+String entries are accepted as shorthand, for example `tabs = ["All", "Combat", "Utility"]`; their lowercase label becomes the stored value. Table entries should be used when the label and stable value differ.
+
+Shared appearance fields are `font`, `font_size`, `spacing`, `padding` / `text_padding`, `background_color`, `hover_color`, `selected_color`, `border_color`, `border_size`, `text_color`, `muted_text_color`, and `indicator_color`. Tab bars size entries from their complete labels by default; set `equal_widths = true` when every tab should occupy the same width. Tab bars additionally use `indicator_size`; dropdowns use `item_height`, `panel_color`, and `open_upwards`. Clicking outside an open dropdown closes it, and Escape closes it with other floating UI.
+
+---
+
+## Input Widgets
+
+Use `role = "input"` for simple text entry on screens. Inputs write to generic UI state via `bind` / `binding`; `game.start` reads `start.name`.
+
+```toml
+[ui]
+role = "input"
+bind = "start.name"
+text = "Edliron"
+font = "Roboto-Bold"
+font_size = 24.0
+color = "#f2f2f2"
+background_color = "#111111cc"
+border_color = "#888888"
+border_size = 2
+```
+
+### Example 2
+
+This button:
+
+- Shows the widget with the sector name of `Messages`
+- Hides all widgets which starts with `Inventory`.
+- Deactivate the button named `Show Inventory`.
+- Sets its own state to `active`.
+
+```toml
+[ui]
+role = "button"
+
+show = ["Messages"]
+hide = ["Inventory*"]
+
+deactivate = ["Show Inventory"]
+
+active = true
+```
+
+### Example 3
+
+This button switches both rendering camera and player input mapping to first-person.
+
+```toml
+[ui]
+role = "button"
+camera = "firstp"
+player_camera = "firstp"
+# camera_target = "Game View"
+```
+
+### Example 4
+
+Spell intent button.
+- In **3D**, select it and click a character to cast at that target.
+- In **2D**, select it and cast via directional intent input (like other directional intents such as `look`).
+
+```toml
+[ui]
+role = "button"
+intent = "spell"
+spell = "Fireball"
+deactivate = ["LookIntent", "UseIntent", "PickupIntent", "DropIntent"]
+border_size = 1
+border_color = "#ffff88"
+```
+
+---
+
+## Avatar Widgets
+
+Use a widget with **role = "avatar"** to render an avatar preview in the UI.
+
+This uses the same avatar colorization pipeline as runtime avatars and can optionally include equipped weapons.
+When a targeting command is active, clicking the avatar widget targets the bound character.
+This gives first-person layouts a self-target substitute for actions such as Minor Heal or Look.
+
+### UI Section
+
+- **avatar** - Avatar name to preview (for example `"Human"`). If omitted, the bound character avatar is used.
+- **party** - Optional binding target for the avatar widget. If omitted, Eldiron uses the current leader.
+- **animation** - Optional animation name (for example `"Idle"`). If omitted, the current avatar animation is used.
+- **frame_index** - Frame index to render (defaults to `0`).
+- **perspective** - Optional direction: `front`, `back`, `left`, `right` (defaults to `front`).
+- **border_size** - Silhouette interaction frame thickness in pixels. Defaults to `2`; use `0` to hide it.
+- **border_color** / **border_color_index** - Neutral silhouette frame color as a hex color or Art Palette index.
+- **damage_border_color** / **damage_border_color_index** - Silhouette frame color shown briefly after the bound entity loses health.
+- **damage_flash_seconds** - How long the damage frame remains visible. Defaults to `0.8`.
+- **damage_stat** - Attribute watched for damage. Defaults to `"HP"`.
+
+Avatar widgets also accept `[ui.style] border = "#..."` and
+`[ui.style.damage] border = "#..."` for the neutral and damage frame colors.
+- **show_weapons** - Include equipped weapon overlays (`true` by default).
+
+### Example
+
+```toml
+[ui]
+role = "avatar"
+party = "leader"
+# avatar = "Human"
+animation = "Idle"
+frame_index = 0
+# perspective = "front"
+# show_weapons = true
+```
+
+### Party Binding
+
+Screen widgets that show character-related content can bind to a party target with `ui.party`.
+
+Supported values today:
+
+- `leader` - the default binding used by existing projects
+- `party.0`, `party.1`, ... - bind by party index
+- a character `party_role`
+- a character `name`
+
+This system is intentionally expandable. Current projects continue to work because omitted `party` still resolves to the leader/current player path.
+
+---
+
+## Profile Widgets
+
+Use a widget with **role = "profile"** to render a complete party-member profile
+block. A profile widget can show the character portrait, name, class, and live
+stat bars inside one configurable widget.
+
+Profiles are designed for party UIs. If the bound character has an explicit
+profile image, that image is used. Otherwise Eldiron generates a bust from the
+character avatar, which makes dynamic party profiles possible without separate
+portrait art.
+
+### UI Section
+
+- **party** - Optional binding target. If omitted, Eldiron uses the current leader.
+- **avatar** - Optional avatar name override. If omitted, the bound character avatar is used.
+- **animation** - Optional avatar animation used for generated profiles.
+- **frame_index** - Avatar animation frame index for generated profiles. Defaults to `0`.
+- **crop** - Generated avatar crop: `bust`, `face`, or `full`. Defaults to `bust`.
+- **show_weapons** - Include equipped weapon overlays in generated profiles.
+- **image_size** / **profile_size** - Portrait size in pixels.
+- **show_text** - Show or hide name and class text. Defaults to `true`.
+- **selected** / **selected_frame** - Draw a selection frame around the whole profile.
+- **selected_frame_color** / **frame_color** - Selection frame color.
+- **selected_frame_size** / **frame_size** - Selection frame size in pixels. Defaults to `2`.
+- **selected_frame_padding** / **frame_padding** - Inner padding reserved for the selected frame. Defaults to `4`.
+- **name_color** / **color** - Name text color.
+- **class_color** / **subtitle_color** - Class text color.
+- **name_font_size** / **font_size** - Name text size.
+- **class_font_size** - Class text size.
+- **text_gap** - Gap between name and class text.
+- **border_size** - Portrait silhouette border size. Use `0` to hide it.
+- **border_color** - Portrait silhouette border color.
+- **stats_layout** - Embedded stat-bar placement:
+  - `side`: portrait on the left, text and horizontal bars on the right.
+  - `bottom`: text/portrait above, full-width horizontal bars below.
+  - `vertical`: portrait/text plus vertical meters filled from bottom to top.
+- **stats_top_gap** - Gap before the stat-bar group.
+- **stat_gap** - Gap between embedded stat bars.
+
+### Embedded Stats
+
+Add embedded stat bars with `[[ui.stats]]`. Each entry reads live attributes
+from the bound party entity, just like a standalone `role = "stat"` widget.
+
+- **stat** / **attribute** / **value** - Current attribute to read, such as `HP` or `MP`.
+- **max_stat** / **max_attribute** / **max** - Maximum attribute used for the ratio. Defaults to `MAX_<stat>`.
+- **height** - Horizontal bar height in pixels.
+- **width** - Vertical meter width in pixels. Used by `stats_layout = "vertical"`.
+- **background_color** / **background** - Empty bar color.
+- **fill_color** / **color** - Filled bar color.
+- **border_color** - Bar border color.
+- **border_size** - Bar border size.
+
+### Character Profile Images
+
+The profile widget checks the bound character attributes for explicit profile
+art before generating a profile from the avatar:
+
+- `profile_tile_id`
+- `profile_source`
+- `portrait_tile_id`
+
+If none of those are present, the widget builds a front-facing avatar bust.
+
+### Example
+
+```toml
+[ui]
+role = "profile"
+party = "leader"
+crop = "bust"
+image_size = 64
+selected = true
+selected_frame_color = "#45cbd0"
+selected_frame_size = 2
+selected_frame_padding = 4
+name_font_size = 16.0
+class_font_size = 13.0
+border_size = 1
+border_color = "#b8c0cc"
+stats_layout = "side"
+stats_top_gap = 8
+stat_gap = 8
+
+[[ui.stats]]
+stat = "HP"
+max_stat = "MAX_HP"
+height = 14
+fill_color = "#d63a3a"
+background_color = "#250909"
+border_color = "#6c3030"
+border_size = 1
+
+[[ui.stats]]
+stat = "MP"
+max_stat = "MAX_MP"
+height = 14
+fill_color = "#3269d6"
+background_color = "#081427"
+border_color = "#263f72"
+border_size = 1
+```
+
+---
+
+## Stat Widgets
+
+Use a widget with **role = "stat"** to show a live character resource such as health or mana.
+
+Stat widgets bind to the same party targets as avatar and text widgets. They can render a simple bar or draw state tiles. `tile_ids` entries may be single tile ids or tile group ids. If a single source id is supplied in `tile_ids`, that tile or group is clipped by the current stat ratio, which is useful for bottle-fill art with transparency.
+
+### UI Section
+
+- **stat**: current attribute to read, such as `HP` or `MP`.
+- **max_stat**: maximum attribute used for the ratio, such as `MAX_HP` or `MAX_MP`. Defaults to `MAX_<stat>`.
+- **party**: Optional binding target. If omitted, Eldiron uses the current leader.
+- **mode**: `bar` or `tiles`.
+- **tile_ids**: Tile or tile group ids ordered from empty to full. With one source id, it is clipped by the stat ratio.
+- **orientation**: `horizontal` or `vertical`.
+- **clip**: Whether a single tile should be clipped (`true` by default for one-tile stat widgets).
+- **background_color**, **fill_color**, **border_color**, **border_size**: Optional bar styling.
+
+### Examples
+
+```toml
+[ui]
+role = "stat"
+party = "leader"
+stat = "HP"
+max_stat = "MAX_HP"
+mode = "tiles"
+orientation = "vertical"
+tile_ids = ["59bd9503-7b25-462e-b04e-63c1f292c360"]
+```
+
+```toml
+[ui]
+role = "stat"
+stat = "MP"
+max_stat = "MAX_MP"
+mode = "bar"
+fill_color = "#4d7cff"
+background_color = "#10131aaa"
+border_size = 1
+border_color = "#6d7890"
+```
+
+---
+
+## Text Widgets
+
+**Text widgets** display text on the screen and can include **static content** or **dynamic placeholders** for player or game data.
+
+### UI Section
+
+- **text**: multiline string content; placeholders like `{PLAYER.CLASS}`, `{PLAYER.RACE}`, `{PLAYER.STR}`, `{PLAYER.DEX}`, `{PLAYER.FUNDS}`, `{PLAYER.LEVEL}`, `{PLAYER.EXP}`, `{PLAYER.ATTACK}`, `{PLAYER.ARMOR}`, UI placeholders like `{UI.spell.runes}`, and start-screen placeholders like `{START.CLASS}` are replaced at runtime.
+- **tab_width**: optional tab stop width in pixels for `\t` alignment inside the text.
+- **font**: font family name.
+- **font_size**: size of the font.
+- **spacing**: line spacing.
+- **color**: text color.
+- **align** or **horizontal_align**: optional text alignment. Supported values are `left`, `center`, and `right`. Lines containing tab stops stay left-aligned so stat tables remain predictable.
+
+You can customize the **font**, **size**, **line spacing**, and **color** of the text.
+
+Combat-related player placeholders:
+
+- `PLAYER.CLASS` is the player's rules class, falling back to the character template name.
+- `PLAYER.RACE` is the player's rules race.
+- `PLAYER.ATTACK` is the accumulated `DMG` value across the player's equipped weapon slots.
+- `PLAYER.ARMOR` is the accumulated `ARMOR` value across the player's equipped gear slots.
+- `PLAYER.LEVEL` resolves through `game.level`.
+- `PLAYER.EXP` and `PLAYER.EXPERIENCE` resolve through `game.experience`.
+- `PLAYER.WEAPON.<ATTR>` sums an attribute across the player's weapon slots.
+- `PLAYER.EQUIPPED.<ATTR>` sums an attribute across all equipped items.
+- `PLAYER.ARMOR.<ATTR>` sums an attribute across the player's gear slots.
+
+The slot groups come from `game.weapon_slots` and `game.gear_slots` in **Game / Settings**.
+
+Start-screen placeholders use generic UI state and work before the player has spawned:
+
+- `START.NAME` is the current `start.name` input value.
+- `START.CLASS` is the current `start.class` choice.
+- `START.CLASS_ROLE`, `START.CLASS_ATTRIBUTES`, `START.CLASS_WEAPONS`, `START.CLASS_ARMOR`, `START.CLASS_ABILITIES`, `START.CLASS_SPELLS`, `START.CLASS_EQUIPMENT`, and `START.CLASS_INVENTORY` are resolved from the active ruleset class. Abilities and spells preview the class's starting `unlocks.level_1` entries, while direct class arrays remain supported for simpler custom rulesets.
+- `UI.<key>` resolves any client UI state key, such as a rune queue stored by buttons with `bind = "spell.runes"`.
+
+### Example
+
+```toml
+[ui]
+role = "text"
+text = """
+Welcome, {PLAYER.CLASS}!
+
+LVL:\t{PLAYER.LEVEL}\tEXP:\t{PLAYER.EXP}\tG:\t{PLAYER.FUNDS}
+HP:\t{PLAYER.HP}/{PLAYER.MAX_HP}\tMP:\t{PLAYER.MP}/{PLAYER.MAX_MP}
+
+STR:\t{PLAYER.STR}\tDEX:\t{PLAYER.DEX}
+INT:\t{PLAYER.INT}\tWIS:\t{PLAYER.WIS}
+ARM:\t{PLAYER.ARMOR}\tRES:\t{PLAYER.RESIST}\tPWR:\t{PLAYER.POWER}
+
+May the stars guide you!
+"""
+
+font = "Tiny5-Regular"
+font_size = 18.0
+spacing = 2.0
+tab_width = 110.0
+color = "#aaaaaa"
+```
+
+---
+
+## Messages Widget
+
+The **Messages widget** displays all incoming messages for the player in a scrollable list.
+
+### UI Section
+
+- Messages are sent using the **message** command.
+- Each message can include an optional **category** to pick a display color.
+- If no category is specified, messages default to color **#aaaaaa** (override with **default**).
+
+You can define custom **colors for categories** using keys in the widget's data section.
+In the example below, messages with the `"warning"` category will appear in **light red**.
+
+By default, messages are listed **bottom-up** (most recent at the bottom).
+To change this to **top-down**, set `top_down = true` in the widget’s configuration.
+
+### Example
+
+```toml
+[ui]
+role = "messages"
+font = "Tiny5-Regular"
+font_size = 18.0
+spacing = 5
+message_spacing = 8
+background_color = "#00000099"
+warning = "#ff8888"
+default = "#ffffff"
+```
+
+Use `handles` to decide which message/choice streams a Messages widget displays. This lets you place one Messages widget as a log and another as a dialog overlay on top of the game view.
+
+```toml
+[ui]
+role = "messages"
+handles = ["dialogs"]
+top_down = true
+```
+
+Supported handles are:
+
+- `messages`: Regular `message(...)` output.
+- `dialogs`: TOML-authored `dialog(...)` text and choices.
+- `multiple_choice`: Script-authored `multiple_choice(...)` prompts and choices.
+- `offer_inventory`: Vendor inventory offers from `offer_inventory(...)`.
+
+If `handles` is omitted, the widget displays all streams.
+
+Messages widgets can optionally draw the sender character's existing `portrait_tile_id` on the left and wrap text to the right. This works for regular messages, dialogs, script multiple-choice menus, and inventory offers.
+
+```toml
+[ui]
+role = "messages"
+handles = ["dialogs"]
+portrait = true
+portrait_size = 64
+portrait_gap = 12
+```
+
+### Layout Notes
+
+- `spacing`: vertical spacing between wrapped lines inside one message block
+- `message_spacing`: vertical spacing between separate message blocks
+- `portrait_size`: square portrait size in pixels when `portrait = true`
+- `portrait_gap`: horizontal spacing between the portrait and text
+- `press_to_continue`: pauses output when the current page fills while more text is queued and shows a prompt
+- `continue_prompt`: text shown while waiting for the player to continue
+- `pause_blocks_input`: blocks player input during message pauses, defaults to `true`
+- `scrollback`: lets the player use the mouse wheel to review older messages
+- `max_messages`: number of messages kept for scrollback, defaults to `100`
+- `command_input`: shows a desktop-only command input line at the bottom of the widget
+- `command_prompt`: prompt text for command input, defaults to `@`
+- `command_prompt_color`: command input color as `#RRGGBB`
+- `background`: set to `true` to draw a semi-transparent default background
+- `background_color`: optional widget background as `#RRGGBB` or `#RRGGBBAA`; setting this also enables the background
+- `background_padding`: expands the background rectangle outside the widget bounds
+
+This is useful when long wrapped messages would otherwise run visually into the next message.
+
+Active dialog, script, and vendor choices are temporary rows in the same scrollable stream as
+their preceding text. Long choice lists initially leave room for conversation context. Scrolling
+up reclaims the full widget for history; when this moves active choices below the viewport, a
+compact `v Choices` control returns directly to them. Choosing a response removes the temporary
+rows and keeps only the selected response in history.
+
+### Pauses and Scrollback
+
+Messages widgets can pause output automatically when the visible page fills and more queued text is waiting:
+
+```toml
+[ui]
+role = "messages"
+press_to_continue = true
+continue_prompt = "Press Space"
+pause_blocks_input = true
+scrollback = true
+max_messages = 200
+```
+
+### Command Input
+
+Enable `command_input` to add a desktop command line to the bottom of the Messages widget. It uses the same text command parser as text play, which makes it useful for testing ruleset actions directly in graphical play.
+
+```toml
+[ui]
+role = "messages"
+command_input = true
+command_prompt = "@"
+```
+
+Click the command line or press Return to focus it. Example commands:
+
+```text
+cast minor heal
+cast holy light orc
+take golden key
+look orc
+```
+
+Message nodes can insert pauses into the message stream. Set Category to `pause` and leave Text empty for a continue prompt, or enter a number of seconds for a timed pause. Connect ordinary Message nodes before and after that entry. This pauses presentation of the message stream, not graph execution.
+
+### Multiple Choice
+
+For displaying **multiple choice** messages (for example when a vendor offers his inventory), there are two more options:
+
+```toml
+[ui]
+column_width = 30 # The width of the body column of the text
+multiple_choice = "#ffff88" # The color for multiple choice items
+```

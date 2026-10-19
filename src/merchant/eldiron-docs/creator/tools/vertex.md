@@ -1,0 +1,35 @@
+---
+title: "Vertex Tool"
+sidebar_position: 3
+---
+
+The **Vertex Tool** (keyboard shortcut **'V'**) allows you to **select, edit, and delete vertices** in the map.
+
+It is specifically designed for working with **vertices only**.
+
+In 3D views, the Vertex Tool selects vertices on direct geometry objects.
+
+## Selection Modes
+
+- **Click**: Select a vertex.
+- **Shift + Click** (on empty area): Create a new vertex.
+- **Shift + Click**: Select multiple vertices.
+- **Alt (Mac: Option) + Click**: Remove vertices from the selection.
+- **Click + Drag**: Move selected vertices. In 3D, moved vertices snap to absolute grid positions.
+- **Click + Drag onto another vertex**: Auto-merge moved 3D vertices when they land on the same grid position.
+- **Click + Drag (Empty Area)**: Select a rectangular area of vertices in 2D and non-Orbit editing views.
+- **B in 3D Orbit, then drag**: Perform one-shot rectangle selection of Geometry Object vertices. **Shift** adds, **Alt/Option** removes, and **Escape** cancels.
+- **Delete Key**: Remove selected vertices.
+- **Escape Key**: Clear the selection.
+
+## 3D Shortcuts
+
+- **X**: Split selected geometry edges when the selected vertices form object edges.
+- **M**: Merge selected vertices to their center and rebuild affected faces.
+- **F**: Fill a selected vertex boundary with a face.
+- **L**: Expand a selected edge into an edge loop on quad geometry.
+- **[ / ]**: Move selected vertices vertically by one grid step.
+
+When moving or merging vertices creates a concave or non-planar face, Eldiron automatically resolves the affected face into triangles so the mesh remains valid.
+
+The shared HUD grid shortcuts **1 ... 6** set 3D vertex snapping to `1`, `1/2`, `1/4`, `1/8`, `1/16`, or `1/32` world units. Auto-merge also runs after gizmo-based vertex movement when moved vertices land on existing vertices.

@@ -1,0 +1,9 @@
+
+At startup, populate `ShipTemplateLibrary` from `assets/templates/`.
+The hardcoded `default_ship_template()` should eventually be only a test
+fallback or removed entirely.
+
+A scenario file will spawn one or more ships and link their docking ports.
+
+Example scenario JSON:
+
