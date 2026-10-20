@@ -129,14 +129,127 @@ room types, introducing systems gradually.
 - Door tiles align to the 1-tile door openings on room boundaries.
 - Tile sets are selected by room type.
 
-## Docking
+## Docking: Hybrid Space Graph and Shared Interior Map
 
-Docking ports are placed on valid rectangular room boundary edges. They are
-authored as `DockingPortDef` and spawn `DockingPort` entities. Docking
-graphs connect two ships.
+Spacetrash uses a hybrid docking model:
 
-Docking only connects systems that both ships support. A ship without
-fluidics cannot pass fluidics across an umbilical.
+- Space navigation is an abstract graph; no 3D ship flight physics.
+- After docking, ships and station merge into one shared interior `RoomGraph` and tile grid.
+- Docking itself is an FSA + deterministic merge/undock transaction.
+
+This departure from Duskers is the core new mechanic. It enables boarding, shared maps, system transfer, and multi-ship stations.
+
+### Space Navigation Layer
+
+Model the fleet/station world as a directed/undirected graph of ship and station nodes. Docking links are edges. Travel between distant objects is a command: dock, undock, launch shuttle, etc.
+
+This layer is FTL-like and keeps ship management simple.
+
+### Interior Merged Map
+
+After docking, the involved instances become a single passable playfield:
+
+- merged `RoomGraph`
+- merged tile grid
+- generated umbilical corridor
+- docking-port room nodes
+- connected colliders
+- derived `CurrentSystemGraphs`
+
+The existing `merge_instances` function in `src/procgen/composite.rs` is the Phase 1 implementation.
+
+### Docking FSA and Transactions
+
+Docking is a state machine:
+
+`Separated -> Aligned -> Clamped -> Sealed -> Powered -> Pressurized -> Open`
+
+Failure states include `Rejected`, `Misaligned`, `Jammed`, `Unpowered`, `Breached`, `Decompressing`.
+
+Dock and undock are implemented as deterministic world transactions:
+
+**Dock:**
+
+1. Validate airlock compatibility and distance.
+2. Generate or load local ship/station grids.
+3. Generate a two-tile-wide umbilical corridor.
+4. Merge tile grids without overlap.
+5. Merge `RoomGraph`s with unique room IDs.
+6. Add `RoomEdge` with `EdgeKind::Umbilical`.
+7. Rebuild affected tile/room/collider entities.
+8. Rebuild `CurrentRoomGraph` and `CurrentSystemGraphs`.
+9. Set docking FSA to `Open`.
+
+**Undock:**
+
+1. Set FSA to `Sealed`, `Breached`, or `Decompressing`.
+2. Remove umbilical corridor tiles.
+3. Split room graph at the dock edge.
+4. Despawn only affected corridor/collider entities.
+5. Keep local instance data so re-docking is possible.
+
+### Umbilical Corridor
+
+The umbilical is a two-tile-wide passable segment. It is generated as real tile/room geometry, not only a graph edge. It connects two main airlock rooms and carries only systems supported by both sides.
+
+### Four-Sided Station
+
+The station is a central hub with one airlock per side. Four ships dock at cardinal offsets. The resulting merged graph is a single connected playfield.
+
+The station introduces:
+
+- dock control room
+- station-wide system maps
+- central chokepoints
+- airlock lockdown state
+
+### UI / Editor Integration
+
+The editor must support:
+
+- placing ship/station instances
+- moving and rotating them
+- snapping compatible airlocks when within max umbilical length
+- generating/removing umbilical corridors
+- showing docking state and system compatibility
+
+Terminal/HUD commands should include docking actions:
+
+- `open <airlock-id>`
+- `close <airlock-id>`
+- `dock <port-id>`
+- `undock <port-id>`
+- `status dock`
+
+Schematic layers must visualize docking edges, umbilical routes, and locked/open states.
+
+### Testing and Map Contracts
+
+Add tests for:
+
+- merged room graph connected
+- no tile overlap from different instances
+- each umbilical is exactly two passable tiles wide
+- system graph pruning across umbilical edges
+- every main airlock is either connected or intentionally empty
+- four-sided station has four airlocks
+- no orphan airlocks
+- safe undock does not corrupt local instance data
+
+Map assertions should be extended with composite-level checks.
+
+### Implementation Steps
+
+1. Add `DockingPlan` and composite spawn path.
+2. Build a hardcoded four-sided station composite fixture.
+3. Generate real umbilical tiles, not just graph edges.
+4. Add docking FSA component/resource.
+5. Implement deterministic dock/undock transactions.
+6. Integrate `Scenario`, `ShipInstanceInit`, and `DockingLink` into world spawn.
+7. Add editor docking tools and snap validation.
+8. Add docking terminal commands and schematic overlays.
+9. Add map contracts and BDD tests for docking.
+10. Evolve `merge_instances` into a runtime-safe world transaction.
 
 ## Implementation Steps
 

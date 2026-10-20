@@ -300,6 +300,47 @@ This implies that a good captain must balance resource acquisition against the s
 - The same docking mechanism can later be used to connect multiple ships
   into a sprawling station.
 
+### Hybrid Docking Model
+
+Spacetrash intentionally departs from Duskers by making docked ships share a single continuous interior map. However, we do not simulate ships flying around in 3D space. Instead, docking is handled with three distinct layers:
+
+1. **Space navigation graph** — FTL-like abstract graph of ships, stations, shuttles, and dock links. Travel between distant objects is a deliberate command, not continuous flight.
+2. **Interior shared map** — after docking, the involved ships and station become one merged `RoomGraph` and tile grid. Continuous XZ movement, colliders, doors, fog of war, and system lines operate on this shared map.
+3. **Docking FSA + merge transaction** — docking/undocking is a deterministic structural state machine that creates or removes an umbilical corridor and updates the world graph, tile grid, colliders, and system graphs atomically.
+
+The result is a hybrid experience:
+
+- Fleet/ship management stays as manageable as FTL.
+- Boarding gameplay stays as continuous as the current Spacetrash prototype.
+- Docking becomes a real strategic action, not just a teleport.
+
+#### Docking State Machine
+
+A docking port moves through clear states:
+
+`Separated -> Aligned -> Clamped -> Sealed -> Powered -> Pressurized -> Open`
+
+Failure and danger states include:
+
+`Rejected`, `Misaligned`, `Jammed`, `Unpowered`, `Breached`, `Decompressing`
+
+This creates gameplay around power, atmosphere, compatibility, forced undocking, and station lockdown controls.
+
+#### Umbilical
+
+Between connected main airlocks, a two-tile-wide passable corridor is generated. The corridor is a `RoomEdge` of kind `Umbilical`, and its tile geometry is added to the merged grid. It can stretch within validated bounds and may be enclosed by wall or hazard shells. The same corridor is used for shared-system transfer.
+
+#### Four-Sided Station
+
+The station is generated as a central hub with one main airlock per side. It is not merely another ship. It provides dock control, station-wide system mapping, and central chokepoints. The completed map forms one connected `RoomGraph`.
+
+#### UI and Testing Implications
+
+- Editor tools must allow placing/moving ships and snapping airlocks visually.
+- Schematic layers must show docking state, umbilical routes, and system compatibility.
+- HUD/terminal commands must expose docking actions and statuses.
+- Map contracts must validate connectivity, overlap avoidance, two-tile umbilical width, and system graph pruning across docking edges.
+
 ### Travel Between Ships
 
 There are only a few limited means of travel between ships:
@@ -467,6 +508,27 @@ management, and careful positioning of the crew.
   displayed at a time.
 - Sensor cooldowns, sweep speeds, and ranges are visible to the player so the
   performance compromises read as intentional sci-fi equipment behavior.
+
+### Traditional GUI vs Diegetic Console
+
+Spacetrash deliberately splits interaction surfaces into two zones:
+
+- **Traditional GUI** is used for the main path: main menu, scenario
+  selection, pause menu, game-over screen, and basic mouse-driven navigation.
+  These screens are outside the active drone/ship fiction and should be
+  clear, discoverable, and conventional.
+- **Diegetic command line** is used for debug and out-of-game commands once
+  the player is inside the live world. Commands such as simulation speed
+  control, scenario listing/reloading, and developer diagnostics live here,
+  not in the HUD.
+- **Debug information is kept out of the HUD.** The HUD shows gameplay-
+  relevant state such as health, oxygen, selected unit, sensor view, and
+  schematic layer. Console output and diagnostics belong to the terminal
+  view.
+- **Spectator mode is not a separate player-facing mode.** It is superseded
+  by godmode/editor for interactive editing and by headless `run_arena` for
+  deterministic replay. The game therefore has three developer-facing modes:
+  live play, editor/godmode, and headless test.
 
 ### Schematic Layer Visual Language
 
@@ -660,6 +722,81 @@ control.
 Eldiron authors the upgrade templates, weighted generation tables, and
 behavior transition rules. Bevy instantiates the upgrade modules into ECS
 components at runtime.
+
+## 15.5 Set Pieces as Agent Variations
+
+Spacetrash treats many physical props, interactive objects, and environmental
+set pieces as specialized agent variations rather than bespoke world objects.
+
+This follows from the same ECS principle as upgrade-driven actors: an agent
+is an entity assembled from a chassis plus optional upgrades, behaviors,
+sensors, effectors, and physics components. A set piece is simply an agent
+with some components omitted or replaced.
+
+Examples:
+
+- **Cargo box** is an entity with `PhysicsBody`, `CircleCollider` or
+  `AabbCollider`, and `GameplayEntity`, but no chassis, no behavior, no
+  sensor, no ray instrument, and no player input. It is a physical object,
+  not a separate “prop” system.
+- **Reactor core** is a room-center set piece with a collider and a basic
+  `ReactorBehavior` or `ThermalSource` component. It does not move
+  deliberately, but participates in physics and may have a simple behavior
+  such as emitting heat, drawing power, or responding to damage.
+- Door/airlock actuator nodes, fluid reservoirs, battery packs, and research
+  stations are later represented the same way: physical objects with optional
+  subsystem behavior, sharing collision and lifecycle code with actors.
+- **Future bots** extend the same pattern by adding an internal battery/power
+  storage and a chassis. The battery is itself an agent-like physical
+  subsystem with capacity, thermal load, and fluid/energy ports. The bot uses
+  the same physics-based mechanics as static set pieces, just with locomotion
+  components.
+
+Inspiration:
+Factorio fluidboxes provide a useful model here:
+
+- A fluidbox is a physical attachment point with capacity, connections, flow
+  limits, and interactions.
+- Fluidboxes are defined independently but attached to a machine/bot.
+- The same fluidbox can be attached to a stationary tank, a moving train, or
+  a portable bot.
+- The machine/bot does not own the fluidbox code path; it only supplies
+  connectivity and component placement.
+
+Spacetrash should adopt an equivalent pattern:
+
+- `PhysicalSetPiece` describes a base physical object: collider, mass, size,
+  collision rules, and maybe socket/port count.
+- Optional `AgentUpgradeSet` describes upgrades and behaviors that make the
+  piece interactive or autonomous.
+- Fluid/thermal/electrical ports become components shared by stationary set
+  pieces, moving bots, and player drones.
+- Behaviors are added per piece; a cargo box has none, a reactor has a simple
+  thermal/electrical behavior, and a future bot can use the same port
+  components while also having movement and behavior FSAs.
+
+This keeps physics, systems, and interactions uniform. It also means editor
+tools, map assertions, and headless arena tests can handle both actors and
+props through the same entity lifecycle instead of maintaining separate prop
+systems.
+
+Implementation impact:
+
+- `GameplayEntity` already provides common lifecycle.
+- `PhysicsBody`, `CircleCollider`, `AabbCollider`, `ActorSize`, `Velocity`,
+  `Rotation`, and `AngularVelocity` are reused.
+- Optional `BehaviorDirective`, `AiBehaviorState`, and upgrade components are
+  simply not inserted for inert set pieces.
+- A new `PhysicalSetPiece` marker should be added to distinguish non-mobile
+  interactive props from actual agents, but it must not bypass collision,
+  lifecycle, or system graph integration.
+- Future port components (`FluidPort`, `PowerPort`, `ThermalPort`) should be
+  designed as ordinary components that can be attached to any entity,
+  mirroring Factorio fluidboxes.
+- Room-specific generation can guarantee a characteristic set piece by
+  placing one at the deterministic center or another designated socket in
+  the room, using the same graph constraints and terminal placement rules
+  already defined.
 
 ## 16. Arcade Physics Formalization
 

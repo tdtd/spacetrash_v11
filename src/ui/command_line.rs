@@ -1,13 +1,16 @@
 use bevy::prelude::*;
 
 use crate::components::{Blackbox, Drone};
-use crate::resources::{DiegeticView, FocusedEntity};
+use crate::resources::{DiegeticView, FocusedEntity, TerminalInputBuffer, TerminalOutputLog};
 
 #[derive(Component)]
 pub struct CommandLineScreen;
 
 #[derive(Component)]
 pub struct CommandLineFocusText;
+
+#[derive(Component)]
+pub struct CommandLineOutputText;
 
 pub fn spawn_command_line(commands: &mut Commands) {
     commands
@@ -51,13 +54,16 @@ pub fn spawn_command_line(commands: &mut Commands) {
                 CommandLineFocusText,
             ));
 
-            parent.spawn(TextBundle::from_section(
-                "> _",
-                TextStyle {
-                    font: default(),
-                    font_size: 26.0,
-                    color: Color::rgb(0.8, 1.0, 0.8),
-                },
+            parent.spawn((
+                TextBundle::from_section(
+                    "> _",
+                    TextStyle {
+                        font: default(),
+                        font_size: 20.0,
+                        color: Color::rgb(0.8, 1.0, 0.8),
+                    },
+                ),
+                CommandLineOutputText,
             ));
         });
 }
@@ -107,5 +113,26 @@ pub fn update_command_line_focus_text(
 
     for mut text in text_query.iter_mut() {
         text.sections[0].value = format!("Focused: {}", focus_name);
+    }
+}
+
+pub fn update_command_line_output(
+    input: Res<TerminalInputBuffer>,
+    output: Res<TerminalOutputLog>,
+    mut text_query: Query<&mut Text, With<CommandLineOutputText>>,
+) {
+    let mut combined = String::new();
+
+    for line in output.lines.iter().rev().take(15).rev() {
+        combined.push_str(line);
+        combined.push('\n');
+    }
+
+    combined.push_str("> ");
+    combined.push_str(&input.current);
+    combined.push('_');
+
+    for mut text in text_query.iter_mut() {
+        text.sections[0].value = combined.clone();
     }
 }

@@ -1,7 +1,7 @@
 use bevy::app::AppExit;
 use bevy::prelude::*;
 
-use crate::resources::{GameState, EditorMode};
+use crate::resources::{GameState, EditorMode, SpectatorMode};
 
 #[derive(Component)]
 pub struct PauseScreen;
@@ -11,6 +11,7 @@ pub enum PauseAction {
     Resume,
     MainMenu,
     EnterEditor,
+    EnterSpectator,
     Quit,
 }
 
@@ -112,6 +113,33 @@ pub fn spawn_pause_menu(mut commands: Commands) {
 
             parent
                 .spawn((
+                    PauseAction::EnterSpectator,
+                    ButtonBundle {
+                        style: Style {
+                            width: Val::Px(200.0),
+                            height: Val::Px(60.0),
+                            margin: UiRect::all(Val::Px(10.0)),
+                            justify_content: JustifyContent::Center,
+                            align_items: AlignItems::Center,
+                            ..default()
+                        },
+                        background_color: BackgroundColor(Color::rgb(0.4, 0.4, 0.6)),
+                        ..default()
+                    },
+                ))
+                .with_children(|parent| {
+                    parent.spawn(TextBundle::from_section(
+                        "Enter Spectator",
+                        TextStyle {
+                            font: default(),
+                            font_size: 32.0,
+                            color: Color::WHITE,
+                        },
+                    ));
+                });
+
+            parent
+                .spawn((
                     PauseAction::MainMenu,
                     ButtonBundle {
                         style: Style {
@@ -182,6 +210,7 @@ pub fn pause_menu_button_system(
     >,
     mut next_state: ResMut<NextState<GameState>>,
     mut editor_mode: ResMut<EditorMode>,
+    mut spectator_mode: ResMut<SpectatorMode>,
     mut app_exit_events: EventWriter<AppExit>,
 ) {
     for (interaction, action) in interaction_query.iter_mut() {
@@ -191,10 +220,18 @@ pub fn pause_menu_button_system(
                     next_state.set(GameState::Playing);
                 }
                 PauseAction::EnterEditor => {
+                    spectator_mode.active = false;
                     editor_mode.active = true;
                     next_state.set(GameState::Playing);
                 }
+                PauseAction::EnterSpectator => {
+                    editor_mode.active = false;
+                    spectator_mode.active = true;
+                    next_state.set(GameState::Playing);
+                }
                 PauseAction::MainMenu => {
+                    editor_mode.active = false;
+                    spectator_mode.active = false;
                     next_state.set(GameState::MainMenu);
                 }
                 PauseAction::Quit => {

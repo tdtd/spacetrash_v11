@@ -7,6 +7,16 @@ use crate::resources::*;
 
 pub mod collision;
 
+pub mod set_pieces;
+
+pub mod behavior;
+pub use behavior::{behavior_arbitration_system, behavior_movement_system};
+
+pub mod spectator;
+
+pub mod terminal;
+pub use terminal::{parse_terminal_command, terminal_input_system};
+
 mod setup_scene;
 pub use setup_scene::setup_scene;
 
@@ -18,9 +28,10 @@ pub fn player_input_system(
     focused_entity: Res<FocusedEntity>,
     mut query: Query<(&mut Velocity, &mut AngularVelocity, Option<&Rotation>)>,
     config: Res<PhysicsConfig>,
+    speed: Res<SimulationSpeed>,
     time: Res<Time>,
 ) {
-    let dt = time.delta_seconds();
+    let dt = time.delta_seconds() * speed.scale;
 
     // Forward/back from W/S, relative to camera facing.
     let mut forward = 0.0;
@@ -92,6 +103,7 @@ pub fn player_input_system(
 /// dynamic circle colliders.
 pub fn movement_system(
     time: Res<Time>,
+    speed: Res<SimulationSpeed>,
     config: Res<PhysicsConfig>,
     mut dynamic_query: Query<(
         Entity,
@@ -106,7 +118,7 @@ pub fn movement_system(
     static_query: Query<(&Transform, &AabbCollider), Without<Velocity>>,
     wall_static_query: Query<(&Transform, &WallSegmentCollider), Without<Velocity>>,
 ) {
-    let dt = time.delta_seconds();
+    let dt = time.delta_seconds() * speed.scale;
 
     // Phase 1: integrate each dynamic actor and resolve static collisions.
     let mut resolved_positions: Vec<(Entity, Vec3, f32, bool)> = Vec::new();
@@ -178,13 +190,11 @@ pub fn movement_system(
     }
 
     // Phase 2: resolve dynamic-dynamic collisions on the collected positions.
-    // Process pairs in deterministic order.
     for i in 0..resolved_positions.len() {
         for j in (i + 1)..resolved_positions.len() {
             let (_, pos_a, radius_a, small_a) = resolved_positions[i];
             let (_, pos_b, radius_b, small_b) = resolved_positions[j];
 
-            // If either actor is Small, skip all collision between them.
             if small_a || small_b {
                 continue;
             }
@@ -210,9 +220,6 @@ pub fn movement_system(
 }
 
 /// Makes the world camera follow the currently focused entity.
-///
-/// The world camera is only updated when the active view is `FirstPerson`.
-/// In other view modes, the camera remains hidden and is not moved.
 pub fn camera_follow_system(
     focused_entity: Res<FocusedEntity>,
     view: Res<DiegeticView>,
@@ -258,11 +265,6 @@ pub fn world_camera_visibility_system(
 }
 
 /// Handles diegetic view input.
-///
-/// - `/` opens and stays in the command line view.
-/// - Backtick toggles between command line and schematic views.
-/// - `F1`-`F12` open the schematic view and toggle their associated layers.
-/// - `Ctrl+1`-`Ctrl+9` provide fallback bindings.
 pub fn schematic_input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut view: ResMut<DiegeticView>,
@@ -337,7 +339,6 @@ pub fn schematic_input_system(
     }
 }
 
-/// Helper to toggle a layer in the active set.
 fn toggle_layer(active_layers: &mut SchematicLayers, layer: SchematicLayer) {
     if !active_layers.active.remove(&layer) {
         active_layers.active.insert(layer);
@@ -345,18 +346,19 @@ fn toggle_layer(active_layers: &mut SchematicLayers, layer: SchematicLayer) {
 }
 
 /// Handles number key focus switching.
-///
-/// `1`-`9` focus drones, `0` opens the fleet configuration view.
-/// Focusing any unit also returns the player view to `FirstPerson`.
 pub fn drone_focus_input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
+    terminal_input: Res<TerminalInputBuffer>,
     mut focused_entity: ResMut<FocusedEntity>,
     mut view: ResMut<DiegeticView>,
     drone_query: Query<(Entity, &Drone)>,
     _blackbox_query: Query<Entity, With<Blackbox>>,
 ) {
+    if !terminal_input.current.is_empty() {
+        return;
+    }
+
     if keyboard.just_pressed(KeyCode::Digit0) {
-        // Do not change focus; open configuration view.
         *view = DiegeticView::ConfigView;
         info!("Opened fleet configuration view");
         return;
@@ -390,9 +392,6 @@ pub fn drone_focus_input_system(
 }
 
 /// Pauses the game when `Escape` is pressed.
-///
-/// If a diegetic overlay is open, `Escape` first closes it and returns to
-/// first-person view instead of opening the pause menu.
 pub fn pause_input_system(
     keyboard: Res<ButtonInput<KeyCode>>,
     mut next_state: ResMut<NextState<GameState>>,
@@ -418,12 +417,14 @@ pub fn debug_game_over_system(
     }
 }
 
-/// Run condition: true only when the game is in Playing state AND editor mode is inactive.
+/// Run condition: true only when the game is in Playing state,
+/// editor mode is inactive, and spectator mode is inactive.
 pub fn playing_and_not_editor(
     state: Res<State<GameState>>,
     editor_mode: Res<EditorMode>,
+    spectator_mode: Res<SpectatorMode>,
 ) -> bool {
-    *state.get() == GameState::Playing && !editor_mode.active
+    *state.get() == GameState::Playing && !editor_mode.active && !spectator_mode.active
 }
 
 /// Despawns all entities marked with `GameplayEntity` when leaving `Playing`.

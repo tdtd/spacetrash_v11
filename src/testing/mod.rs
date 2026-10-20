@@ -26,6 +26,7 @@ pub fn test_app() -> App {
     .insert_resource(PhysicsConfig::default())
     .insert_resource(InputConfig::default())
     .insert_resource(EditorMode::default())
+    .insert_resource(SimulationSpeed::default())
     .insert_resource(EditorTool::default())
     .insert_resource(DiegeticView::default())
     .insert_resource(SchematicLayer::default())

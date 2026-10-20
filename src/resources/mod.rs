@@ -1,6 +1,7 @@
 use bevy::prelude::*;
 use std::collections::{HashMap, HashSet};
 
+use crate::arena::event::ArenaEventLog;
 use crate::procgen::scaffold::RoomGraph;
 
 pub mod ship_template;
@@ -61,6 +62,40 @@ impl Default for InputConfig {
 #[derive(Resource, Default)]
 pub struct EditorMode {
     pub active: bool,
+}
+
+/// Developer spectator mode.
+///
+/// This is the headful counterpart to the headless `run_arena` runner.
+/// It is not a player-facing mechanic; it is used to inspect deterministic
+/// arena episodes and generated maps.
+#[derive(Resource, Default)]
+pub struct SpectatorMode {
+    pub active: bool,
+}
+
+/// Replay state used when spectator mode is active.
+#[derive(Resource, Default)]
+pub struct SpectatorReplay {
+    pub event_log: ArenaEventLog,
+    pub current_tick: u32,
+    pub playback_speed: f32,
+    pub is_playing: bool,
+}
+
+/// Simulation speed multiplier.
+///
+/// This is a debug/out-of-game control exposed through the terminal
+/// command line, not through the HUD.
+#[derive(Resource, Debug, Clone, Copy, PartialEq)]
+pub struct SimulationSpeed {
+    pub scale: f32,
+}
+
+impl Default for SimulationSpeed {
+    fn default() -> Self {
+        Self { scale: 1.0 }
+    }
 }
 
 #[derive(Resource, Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -126,4 +161,29 @@ pub struct CurrentSystemGraphs {
     pub atmospherics: HashMap<u32, Vec<u32>>,
     pub thermal: HashMap<u32, Vec<u32>>,
     pub computer: HashMap<u32, Vec<u32>>,
+}
+
+/// Current terminal command input buffer.
+#[derive(Resource, Default)]
+pub struct TerminalInputBuffer {
+    pub current: String,
+}
+
+/// Ordered terminal output log.
+///
+/// Kept as a resource so it can be read by UI and used in headless tests
+/// without depending on UI entities.
+#[derive(Resource, Default)]
+pub struct TerminalOutputLog {
+    pub lines: Vec<String>,
+}
+
+impl TerminalOutputLog {
+    pub fn push_line(&mut self, line: impl Into<String>) {
+        let line = line.into();
+        self.lines.push(line);
+        while self.lines.len() > 200 {
+            self.lines.remove(0);
+        }
+    }
 }

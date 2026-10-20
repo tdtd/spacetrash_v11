@@ -10,6 +10,9 @@ use crate::procgen::scaffold::{
 use crate::procgen::tile::{TileType, WallDirection};
 use crate::resources::ship_template::ShipTemplate;
 use crate::resources::{CurrentRoomGraph, CurrentSystemGraphs};
+use crate::systems::set_pieces::{
+    set_piece_kind_for_room, set_piece_half_extents, set_piece_visual_size,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum LineDirection {
@@ -330,6 +333,48 @@ pub fn spawn_ship_from_template(
         ..default()
     });
 
+    let set_piece_mesh = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+
+    let cargo_material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.45, 0.30, 0.16),
+        ..default()
+    });
+
+    let reactor_material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.75, 0.18, 0.08),
+        ..default()
+    });
+
+    let power_material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.80, 0.60, 0.00),
+        ..default()
+    });
+
+    let air_scrubber_material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.20, 0.80, 0.30),
+        ..default()
+    });
+
+    let hydroponic_material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.10, 0.70, 0.40),
+        ..default()
+    });
+
+    let server_rack_material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.30, 0.30, 0.80),
+        ..default()
+    });
+
+    let command_console_material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.60, 0.30, 0.80),
+        ..default()
+    });
+
+    let airlock_mechanism_material = materials.add(StandardMaterial {
+        base_color: Color::rgb(0.50, 0.50, 0.50),
+        ..default()
+    });
+
     // Spawn one entity per tile.
     for gy in 0..grid.len() {
         for gx in 0..grid[gy].len() {
@@ -356,10 +401,10 @@ pub fn spawn_ship_from_template(
                 &ceiling_material_b
             };
 
-            // Ceiling sits at the top of the wall slabs. Wall slabs are
-            // centered at y=0 with height `wall_height`, so their top is
-            // `wall_height / 2`.
-            let ceiling_height = template.wall_height * 0.5;
+            // Ceiling sits exactly on top of the wall slabs.
+            // Wall and door-side slabs now span from floor (y=0) to
+            // ceiling (y=wall_height).
+            let ceiling_height = template.wall_height;
 
             match tile {
                 TileType::Floor => {
@@ -531,6 +576,57 @@ pub fn spawn_ship_from_template(
             Transform::from_xyz(world_x, 0.0, world_z),
             GameplayEntity,
         ));
+
+        if let Some(kind) = set_piece_kind_for_room(room_node.room_type) {
+            let half_extents = set_piece_half_extents(kind);
+            let visual_size = set_piece_visual_size(kind);
+
+            let material = match kind {
+                SetPieceKind::ReactorCore => &reactor_material,
+                SetPieceKind::CargoBox => &cargo_material,
+                SetPieceKind::PowerDistributor => &power_material,
+                SetPieceKind::AirScrubber => &air_scrubber_material,
+                SetPieceKind::HydroponicBay => &hydroponic_material,
+                SetPieceKind::ServerRack => &server_rack_material,
+                SetPieceKind::CommandConsole => &command_console_material,
+                SetPieceKind::AirlockMechanism => &airlock_mechanism_material,
+            };
+
+            if kind == SetPieceKind::ReactorCore {
+                commands.spawn((
+                    PbrBundle {
+                        mesh: set_piece_mesh.clone(),
+                        material: material.clone(),
+                        transform: Transform::from_xyz(world_x, half_extents.y, world_z)
+                            .with_scale(visual_size),
+                        ..default()
+                    },
+                    PhysicalSetPiece,
+                    kind,
+                    AabbCollider { half_extents },
+                    GameplayEntity,
+                    ThermalEmitter {
+                        intensity: 3.0,
+                        range: 4.0,
+                    },
+                    HeatAccumulator::default(),
+                ));
+            } else {
+                commands.spawn((
+                    PbrBundle {
+                        mesh: set_piece_mesh.clone(),
+                        material: material.clone(),
+                        transform: Transform::from_xyz(world_x, half_extents.y, world_z)
+                            .with_scale(visual_size),
+                        ..default()
+                    },
+                    PhysicalSetPiece,
+                    kind,
+                    AabbCollider { half_extents },
+                    GameplayEntity,
+                ));
+            }
+        }
     }
 
     // Docking ports remain unchanged.
@@ -613,6 +709,7 @@ fn wall_visual_assets(
     let thickness = wall_thickness.max(0.05);
     let slab_h = wall_height;
     let half_thickness = thickness * 0.5;
+    let vertical_center = slab_h * 0.5;
     let mut assets = Vec::new();
 
     let mut add_slab =
@@ -626,69 +723,69 @@ fn wall_visual_assets(
     match direction {
         WallDirection::North => add_slab(
             Vec3::new(1.0, slab_h, thickness),
-            Vec3::new(0.0, 0.0, 0.5 - half_thickness),
+            Vec3::new(0.0, vertical_center, 0.5 - half_thickness),
             &mut assets,
         ),
         WallDirection::South => add_slab(
             Vec3::new(1.0, slab_h, thickness),
-            Vec3::new(0.0, 0.0, -0.5 + half_thickness),
+            Vec3::new(0.0, vertical_center, -0.5 + half_thickness),
             &mut assets,
         ),
         WallDirection::East => add_slab(
             Vec3::new(thickness, slab_h, 1.0),
-            Vec3::new(0.5 - half_thickness, 0.0, 0.0),
+            Vec3::new(0.5 - half_thickness, vertical_center, 0.0),
             &mut assets,
         ),
         WallDirection::West => add_slab(
             Vec3::new(thickness, slab_h, 1.0),
-            Vec3::new(-0.5 + half_thickness, 0.0, 0.0),
+            Vec3::new(-0.5 + half_thickness, vertical_center, 0.0),
             &mut assets,
         ),
         WallDirection::NorthEast => {
             add_slab(
                 Vec3::new(thickness, slab_h, 1.0),
-                Vec3::new(0.5 - half_thickness, 0.0, 0.0),
+                Vec3::new(0.5 - half_thickness, vertical_center, 0.0),
                 &mut assets,
             );
             add_slab(
                 Vec3::new(1.0, slab_h, thickness),
-                Vec3::new(0.0, 0.0, 0.5 - half_thickness),
+                Vec3::new(0.0, vertical_center, 0.5 - half_thickness),
                 &mut assets,
             );
         }
         WallDirection::NorthWest => {
             add_slab(
                 Vec3::new(thickness, slab_h, 1.0),
-                Vec3::new(-0.5 + half_thickness, 0.0, 0.0),
+                Vec3::new(-0.5 + half_thickness, vertical_center, 0.0),
                 &mut assets,
             );
             add_slab(
                 Vec3::new(1.0, slab_h, thickness),
-                Vec3::new(0.0, 0.0, 0.5 - half_thickness),
+                Vec3::new(0.0, vertical_center, 0.5 - half_thickness),
                 &mut assets,
             );
         }
         WallDirection::SouthEast => {
             add_slab(
                 Vec3::new(thickness, slab_h, 1.0),
-                Vec3::new(0.5 - half_thickness, 0.0, 0.0),
+                Vec3::new(0.5 - half_thickness, vertical_center, 0.0),
                 &mut assets,
             );
             add_slab(
                 Vec3::new(1.0, slab_h, thickness),
-                Vec3::new(0.0, 0.0, -0.5 + half_thickness),
+                Vec3::new(0.0, vertical_center, -0.5 + half_thickness),
                 &mut assets,
             );
         }
         WallDirection::SouthWest => {
             add_slab(
                 Vec3::new(thickness, slab_h, 1.0),
-                Vec3::new(-0.5 + half_thickness, 0.0, 0.0),
+                Vec3::new(-0.5 + half_thickness, vertical_center, 0.0),
                 &mut assets,
             );
             add_slab(
                 Vec3::new(1.0, slab_h, thickness),
-                Vec3::new(0.0, 0.0, -0.5 + half_thickness),
+                Vec3::new(0.0, vertical_center, -0.5 + half_thickness),
                 &mut assets,
             );
         }
@@ -782,25 +879,26 @@ fn spawn_door_side_walls(
     let thickness = wall_thickness.max(0.05);
     let slab_h = wall_height;
     let half_thickness = thickness * 0.5;
+    let vertical_center = slab_h * 0.5;
 
     let placements = match direction {
         WallDirection::East | WallDirection::West => vec![
             (
-                Vec3::new(0.0, 0.0, 0.5 - half_thickness),
+                Vec3::new(0.0, vertical_center, 0.5 - half_thickness),
                 Vec3::new(1.0, slab_h, thickness),
             ),
             (
-                Vec3::new(0.0, 0.0, -0.5 + half_thickness),
+                Vec3::new(0.0, vertical_center, -0.5 + half_thickness),
                 Vec3::new(1.0, slab_h, thickness),
             ),
         ],
         WallDirection::North | WallDirection::South => vec![
             (
-                Vec3::new(0.5 - half_thickness, 0.0, 0.0),
+                Vec3::new(0.5 - half_thickness, vertical_center, 0.0),
                 Vec3::new(thickness, slab_h, 1.0),
             ),
             (
-                Vec3::new(-0.5 + half_thickness, 0.0, 0.0),
+                Vec3::new(-0.5 + half_thickness, vertical_center, 0.0),
                 Vec3::new(thickness, slab_h, 1.0),
             ),
         ],

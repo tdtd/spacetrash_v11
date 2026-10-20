@@ -212,6 +212,24 @@ This document describes the expected behavior of the main gameplay loop, especia
 - **Then** the schematic map closes and the command line returns
 - **And** the world view returns to the normal live camera
 
+### Scenario: Number keys switch focus only when terminal input is empty
+
+- **Given** the game is in `Playing`
+- **And** the command terminal is either closed or focused with an empty input buffer
+- **When** the player presses a number key from `1` through `9`, or `0`
+- **Then** the corresponding drone/Blackbox focus change occurs
+- **And** the terminal input buffer remains empty
+- **And** the view updates to first-person/config view as appropriate
+
+### Scenario: Number keys are captured by terminal while command is being typed
+
+- **Given** the command terminal is focused
+- **And** the terminal input buffer contains at least one character
+- **When** the player presses a number key
+- **Then** the number is appended to the terminal input buffer
+- **And** no drone focus change occurs
+- **And** a command cannot begin with a number; if the first character is a digit, the parser returns an unknown command error
+
 ## Notes
 
 - God mode is not a separate game state; it is a mode within `Playing` controlled by `EditorMode`. This allows the world to stay instantiated without fighting state-transition despawn logic.
@@ -220,3 +238,4 @@ This document describes the expected behavior of the main gameplay loop, especia
 - Factorio’s ability to edit an existing save without loading into a separate “editor executable” is the target: entering the editor pauses the sim and turns on building tools, then exiting resumes.
 - The diegetic command interface uses fixed reserved keys: number keys `1`‑`9` and `0` for focus, backtick for command/schematic toggle, and function keys `F1`‑`F12` for schematic layers. These bindings are part of the core gameplay contract and must not be remapped by mods or future features.
 - Editor mode is toggled via the pause menu button **Enter Editor** and exited via the editor UI button **Exit Editor**. No keyboard shortcut is currently assigned.
+- Pressing `/` focuses the command terminal. Once a command has been started, the terminal captures all keyboard input, including number keys. Number keys retain drone/Blackbox focus behavior only while the terminal input buffer is empty.

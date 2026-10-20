@@ -68,6 +68,43 @@ pub struct Player;
 #[derive(Component, Default)]
 pub struct Controllable;
 
+/// Marks an entity as a hostile enemy agent.
+///
+/// Enemy agents are not directly controllable by the player and currently use
+/// a predetermined behavior directive. Later they will be upgraded into
+/// full upgrade-driven actors.
+#[derive(Component, Default)]
+pub struct Enemy;
+
+/// Marks a visual actor spawned by the spectator replay system.
+///
+/// Spectator actors are presentation-only. They are not gameplay actors and
+/// must be despawned when spectator mode ends.
+#[derive(Component)]
+pub struct SpectatorActor {
+    pub entity_index: u32,
+}
+
+/// Marks a non-mobile, physical world set piece.
+///
+/// Set pieces are agent variations without a chassis, behavior, sensors, or
+/// player input. They still have colliders and `GameplayEntity` lifecycle.
+#[derive(Component, Default)]
+pub struct PhysicalSetPiece;
+
+/// Distinguishes the type of a physical set piece.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SetPieceKind {
+    CargoBox,
+    ReactorCore,
+    PowerDistributor,
+    AirScrubber,
+    HydroponicBay,
+    ServerRack,
+    CommandConsole,
+    AirlockMechanism,
+}
+
 /// Marks an entity as the primary drone, the "Blackbox".
 #[derive(Component, Default)]
 pub struct Blackbox;
@@ -79,9 +116,6 @@ pub struct Drone {
 }
 
 /// First-person camera definition for drones and the Blackbox.
-///
-/// The world camera is placed at `entity_transform.translation + entity_transform.rotation * eye_offset`
-/// and adopts the entity's rotation. The perspective projection FOV is taken from `fov` (radians).
 #[derive(Component)]
 pub struct FirstPersonCamera {
     pub eye_offset: Vec3,
@@ -140,9 +174,6 @@ pub struct GridCoordinates {
 }
 
 /// A single inward-facing wall segment.
-///
-/// `a` and `b` are local-space endpoints in tile XZ coordinates.
-/// `normal` points inward, away from the wall and into the room.
 #[derive(Clone, Debug)]
 pub struct WallSegment {
     pub a: Vec2,
@@ -151,8 +182,6 @@ pub struct WallSegment {
 }
 
 /// Collider made of inward-facing wall segments.
-///
-/// This replaces full AABB colliders on directional room walls.
 #[derive(Component, Clone, Debug)]
 pub struct WallSegmentCollider {
     pub segments: Vec<WallSegment>,
@@ -251,8 +280,6 @@ impl WallSegmentCollider {
 }
 
 /// Component representing a generated tile node in the ship grid.
-///
-/// Stores the tile's type so the schematic map can render the correct glyph.
 #[derive(Component, Clone, Debug)]
 pub struct TileNode {
     pub tile_type: TileType,
@@ -262,3 +289,99 @@ pub struct TileNode {
 /// should be despawned when exiting the `Playing` state.
 #[derive(Component, Default)]
 pub struct GameplayEntity;
+
+/// Marker for the single active ray instrument constraint.
+#[derive(Component, Default)]
+pub struct RayInstrument;
+
+/// Visible-light camera sensor upgrade.
+#[derive(Component, Default)]
+pub struct VisibleCamera;
+
+/// Thermal sensor upgrade.
+#[derive(Component, Default)]
+pub struct ThermalSensor;
+
+/// Radar sensor upgrade.
+#[derive(Component, Default)]
+pub struct RadarSensor;
+
+/// LIDAR sensor upgrade.
+#[derive(Component, Default)]
+pub struct LidarSensor;
+
+/// Emits heat into nearby thermal accumulators.
+#[derive(Component)]
+pub struct ThermalEmitter {
+    pub intensity: f32,
+    pub range: f32,
+}
+
+impl Default for ThermalEmitter {
+    fn default() -> Self {
+        Self {
+            intensity: 1.0,
+            range: 4.0,
+        }
+    }
+}
+
+/// Accumulates received heat.
+#[derive(Component, Default)]
+pub struct HeatAccumulator {
+    pub heat: f32,
+}
+
+/// Melee weapon effector upgrade.
+#[derive(Component, Default)]
+pub struct MeleeWeapon;
+
+/// Turret weapon effector upgrade. Counts as a ray instrument.
+#[derive(Component, Default)]
+pub struct TurretWeapon;
+
+/// Behavior FSA state marker components.
+#[derive(Component, Default)]
+pub struct PatrolBehavior;
+
+#[derive(Component, Default)]
+pub struct GuardBehavior;
+
+#[derive(Component, Default)]
+pub struct AggressiveBehavior;
+
+#[derive(Component, Default)]
+pub struct FleeBehavior;
+
+#[derive(Component, Default)]
+pub struct ScavengeBehavior;
+
+#[derive(Component, Default)]
+pub struct FollowLeaderBehavior;
+
+/// Current active behavior FSA state for actors with behavior upgrades.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum AiBehaviorState {
+    #[default]
+    Passive,
+    Patrol,
+    Guard,
+    Aggressive,
+    Flee,
+    Scavenge,
+    FollowLeader,
+}
+
+/// Player/AI directive that temporarily overrides normal behavior arbitration.
+#[derive(Component, Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum BehaviorDirective {
+    #[default]
+    None,
+    Patrol,
+    Guard,
+    Aggressive,
+    Flee,
+    Scavenge,
+    FollowLeader,
+    Passive,
+}

@@ -7,3 +7,4 @@ pub mod editor;
 pub mod command_line;
 pub mod schematic;
 pub mod config_view;
+pub mod spectator;

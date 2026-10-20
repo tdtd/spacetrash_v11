@@ -230,7 +230,25 @@ fn build_graph_domains(
                         interior_tiles.push(T_PIPE);
                     }
 
-                    domains[y][x] = hs(&interior_tiles);
+                    // Deterministic system terminal:
+                    // electrical rooms get a conduit at room center,
+                    // fluidics rooms get a pipe at room center.
+                    let center_x = min_x + (max_x - min_x) / 2;
+                    let center_y = min_y + (max_y - min_y) / 2;
+
+                    let is_center = x as i64 == center_x && y as i64 == center_y;
+
+                    if is_center {
+                        if has_electrical {
+                            domains[y][x] = singleton(T_CONDUIT);
+                        } else if has_fluidics {
+                            domains[y][x] = singleton(T_PIPE);
+                        } else {
+                            domains[y][x] = hs(&interior_tiles);
+                        }
+                    } else {
+                        domains[y][x] = hs(&interior_tiles);
+                    }
                 }
             }
         }

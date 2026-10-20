@@ -3,12 +3,14 @@ use bevy::render::camera::ClearColorConfig;
 use bevy::ui::IsDefaultUiCamera;
 use bevy_prototype_lyon::prelude::ShapePlugin;
 
-use std::collections::HashMap;
-
 use crate::components::ActiveWorldCamera;
 use crate::resources::*;
-use crate::resources::scenario::{default_ship_template, ShipTemplateLibrary};
+use crate::resources::scenario::{
+    builtin_scenario_catalog, builtin_ship_template_catalog, ActiveScenario, ShipTemplateLibrary,
+};
 use crate::systems::*;
+use crate::systems::set_pieces::set_piece_thermal_system;
+use crate::systems::spectator::spectator_playback_system;
 use crate::ui::loading::*;
 use crate::ui::main_menu::*;
 use crate::ui::pause::*;
@@ -18,6 +20,7 @@ use crate::ui::editor::*;
 use crate::ui::command_line::*;
 use crate::ui::schematic::*;
 use crate::ui::config_view::*;
+use crate::ui::spectator::*;
 
 fn setup_cameras(mut commands: Commands) {
     // 3D camera for the world, marked as the active world camera.
@@ -68,20 +71,24 @@ pub fn run() {
         .add_plugins(DefaultPlugins)
         .add_plugins(ShapePlugin)
         .init_state::<GameState>()
+        .init_resource::<MainMenuLayer>()
         .insert_resource(PhysicsConfig::default())
         .insert_resource(InputConfig::default())
         .insert_resource(EditorMode::default())
+        .insert_resource(SpectatorMode::default())
+        .insert_resource(SpectatorReplay::default())
+        .insert_resource(SimulationSpeed::default())
         .insert_resource(EditorTool::default())
         .insert_resource(DiegeticView::default())
         .insert_resource(SchematicLayer::default())
         .insert_resource(SchematicLayers::default())
         .insert_resource(FocusedEntity::default())
+        .insert_resource(TerminalInputBuffer::default())
+        .insert_resource(TerminalOutputLog::default())
+        .insert_resource(ActiveScenario::default())
+        .insert_resource(builtin_scenario_catalog())
         .insert_resource(ShipTemplateLibrary {
-            templates: {
-                let mut map = HashMap::new();
-                map.insert("test_ship".to_string(), default_ship_template());
-                map
-            },
+            templates: builtin_ship_template_catalog(),
         })
 
         // Persistent cameras for world and UI.
@@ -100,7 +107,9 @@ pub fn run() {
         .add_systems(OnExit(GameState::MainMenu), despawn_main_menu)
         .add_systems(
             Update,
-            (main_menu_input, main_menu_button_system).run_if(in_state(GameState::MainMenu)),
+            (main_menu_input, main_menu_button_system, main_menu_visibility_system)
+                .chain()
+                .run_if(in_state(GameState::MainMenu)),
         )
 
         // Playing
@@ -112,7 +121,18 @@ pub fn run() {
             Update,
             (
                 player_input_system,
+                terminal_input_system,
+                behavior_arbitration_system,
+                behavior_movement_system,
                 movement_system,
+                set_piece_thermal_system,
+            )
+                .chain()
+                .run_if(playing_and_not_editor),
+        )
+        .add_systems(
+            Update,
+            (
                 camera_follow_system,
                 world_camera_visibility_system,
                 schematic_input_system,
@@ -125,11 +145,21 @@ pub fn run() {
             Update,
             (
                 editor_ui_visibility_system,
+                spectator_visibility_system,
                 editor_tool_button_system,
                 update_editor_ui_text_system,
                 editor_exit_button_system,
+                spectator_exit_button_system,
+                spectator_action_button_system,
+                spectator_update_ui_system,
             )
                 .run_if(in_state(GameState::Playing)),
+        )
+        .add_systems(
+            Update,
+            spectator_playback_system
+                .run_if(in_state(GameState::Playing))
+                .run_if(|spectator_mode: Res<SpectatorMode>| spectator_mode.active),
         )
         // Drone focus switching works in both normal play and editor mode.
         .add_systems(Update, drone_focus_input_system.run_if(in_state(GameState::Playing)))
@@ -143,6 +173,7 @@ pub fn run() {
                 schematic_visibility_system,
                 config_view_visibility_system,
                 update_command_line_focus_text,
+                update_command_line_output,
                 update_schematic_legend,
             )
                 .run_if(in_state(GameState::Playing)),
