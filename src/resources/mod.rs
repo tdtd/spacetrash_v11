@@ -163,10 +163,73 @@ pub struct CurrentSystemGraphs {
     pub computer: HashMap<u32, Vec<u32>>,
 }
 
-/// Current terminal command input buffer.
-#[derive(Resource, Default)]
+/// Current terminal command input buffer and history.
+#[derive(Resource, Default, Debug, Clone, PartialEq, Eq)]
 pub struct TerminalInputBuffer {
     pub current: String,
+    pub history: Vec<String>,
+    pub history_index: Option<usize>,
+    pub saved_draft: String,
+}
+
+impl TerminalInputBuffer {
+    /// Appends a non-empty command to history, skipping consecutive duplicates,
+    /// and resets the history navigation cursor.
+    pub fn push_history(&mut self, cmd: impl Into<String>) {
+        let cmd = cmd.into();
+        let trimmed = cmd.trim();
+        if trimmed.is_empty() {
+            self.history_index = None;
+            self.saved_draft.clear();
+            return;
+        }
+
+        if self.history.last().map(|s| s.as_str()) != Some(trimmed) {
+            self.history.push(trimmed.to_string());
+            if self.history.len() > 100 {
+                self.history.remove(0);
+            }
+        }
+        self.history_index = None;
+        self.saved_draft.clear();
+    }
+
+    /// Navigates backwards in command history (Arrow Up).
+    pub fn navigate_up(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+
+        match self.history_index {
+            None => {
+                self.saved_draft = self.current.clone();
+                let last = self.history.len() - 1;
+                self.history_index = Some(last);
+                self.current = self.history[last].clone();
+            }
+            Some(idx) => {
+                if idx > 0 {
+                    let prev = idx - 1;
+                    self.history_index = Some(prev);
+                    self.current = self.history[prev].clone();
+                }
+            }
+        }
+    }
+
+    /// Navigates forward in command history (Arrow Down), restoring any saved draft at the end.
+    pub fn navigate_down(&mut self) {
+        if let Some(idx) = self.history_index {
+            if idx + 1 < self.history.len() {
+                let next = idx + 1;
+                self.history_index = Some(next);
+                self.current = self.history[next].clone();
+            } else {
+                self.history_index = None;
+                self.current = std::mem::take(&mut self.saved_draft);
+            }
+        }
+    }
 }
 
 /// Ordered terminal output log.

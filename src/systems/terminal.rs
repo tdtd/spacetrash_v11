@@ -149,6 +149,7 @@ pub fn terminal_input_system(
         match *key {
             KeyCode::Enter => {
                 let raw = input.current.trim().to_string();
+                input.push_history(&raw);
                 input.current.clear();
 
                 if raw.is_empty() {
@@ -175,6 +176,14 @@ pub fn terminal_input_system(
 
             KeyCode::Backspace => {
                 input.current.pop();
+            }
+
+            KeyCode::ArrowUp => {
+                input.navigate_up();
+            }
+
+            KeyCode::ArrowDown => {
+                input.navigate_down();
             }
 
             other => {
